@@ -105,7 +105,10 @@ impl Engine {
                     }
                 };
 
-                for bookmark in self.document.bookmarks.iter() {
+                if let Some(bookmark) = self
+                    .highlighted_bookmark
+                    .and_then(|i| self.document.bookmarks.get(i))
+                {
                     rendernodes.push(
                         gsk::TextureNode::new(
                             &new_texture,

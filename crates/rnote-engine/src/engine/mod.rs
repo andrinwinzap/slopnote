@@ -219,6 +219,10 @@ pub struct Engine {
     #[serde(skip)]
     origin_indicator_rendernode: Option<gtk4::gsk::RenderNode>,
     // Bookmark indicator rendering
+    //
+    // Only the currently highlighted bookmark (e.g. hovered in the UI) gets an indicator drawn.
+    #[serde(skip)]
+    highlighted_bookmark: Option<usize>,
     #[serde(skip)]
     bookmark_indicator_image: Option<Image>,
     #[cfg(feature = "ui")]
@@ -248,6 +252,7 @@ impl Default for Engine {
             origin_indicator_image: None,
             #[cfg(feature = "ui")]
             origin_indicator_rendernode: None,
+            highlighted_bookmark: None,
             bookmark_indicator_image: None,
             #[cfg(feature = "ui")]
             bookmark_indicator_rendernodes: Vec::default(),
@@ -793,6 +798,16 @@ impl Engine {
         let mut widget_flags = self.update_background_rendering_current_viewport();
         widget_flags.store_modified = true;
         Some(widget_flags)
+    }
+
+    /// Sets the bookmark (by index into [Document]'s bookmarks) whose indicator gets drawn on the canvas,
+    /// or None to hide all bookmark indicators.
+    pub fn set_highlighted_bookmark(&mut self, index: Option<usize>) -> WidgetFlags {
+        if self.highlighted_bookmark == index {
+            return WidgetFlags::default();
+        }
+        self.highlighted_bookmark = index;
+        self.update_background_rendering_current_viewport()
     }
 
     /// Restores the view of the given bookmark (viewport center and zoom).

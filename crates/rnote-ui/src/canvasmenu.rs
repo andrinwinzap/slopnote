@@ -128,6 +128,14 @@ impl RnCanvasMenu {
                 canvasmenu.refresh_bookmarks(&appwindow);
             }
         ));
+
+        self.imp().popovermenu.connect_closed(clone!(
+            #[weak]
+            appwindow,
+            move |_| {
+                set_highlighted_bookmark(&appwindow, None);
+            }
+        ));
     }
 
     pub(crate) fn refresh_zoom_reset_label(&self, zoom: f64) {
@@ -145,6 +153,9 @@ impl RnCanvasMenu {
     /// Rebuild the bookmarks list from the engine of the active tab.
     pub(crate) fn refresh_bookmarks(&self, appwindow: &RnAppWindow) {
         let listbox = self.imp().bookmarks_listbox.get();
+
+        // The bookmark indices might change, so any current highlight becomes stale.
+        set_highlighted_bookmark(appwindow, None);
 
         while let Some(row) = listbox.row_at_index(0) {
             listbox.remove(&row);
@@ -238,6 +249,25 @@ impl RnCanvasMenu {
             let row = ListBoxRow::builder().child(&row_box).build();
             row.set_action_name(Some("win.jump-to-bookmark"));
             row.set_action_target_value(Some(&(engine_index as u32).to_variant()));
+
+            // Indicate the bookmark location on the canvas while its row is hovered.
+            let motion_controller = gtk4::EventControllerMotion::new();
+            motion_controller.connect_enter(clone!(
+                #[weak]
+                appwindow,
+                move |_, _, _| {
+                    set_highlighted_bookmark(&appwindow, Some(engine_index));
+                }
+            ));
+            motion_controller.connect_leave(clone!(
+                #[weak]
+                appwindow,
+                move |_| {
+                    set_highlighted_bookmark(&appwindow, None);
+                }
+            ));
+            row.add_controller(motion_controller);
+
             listbox.append(&row);
         }
     }
@@ -309,4 +339,14 @@ impl RnCanvasMenu {
         popover.popup();
         entry.grab_focus();
     }
+}
+
+/// Set the bookmark whose indicator gets drawn on the canvas of the active tab,
+/// or None to hide all bookmark indicators.
+fn set_highlighted_bookmark(appwindow: &RnAppWindow, index: Option<usize>) {
+    let Some(canvas) = appwindow.active_tab_canvas() else {
+        return;
+    };
+    let widget_flags = canvas.engine_mut().set_highlighted_bookmark(index);
+    appwindow.handle_widget_flags(widget_flags, &canvas);
 }
