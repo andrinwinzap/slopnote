@@ -91,6 +91,14 @@ impl RnAppWindow {
         self.add_action(&action_resize_to_fit_content);
         let action_return_origin_page = gio::SimpleAction::new("return-origin-page", None);
         self.add_action(&action_return_origin_page);
+        let action_add_bookmark = gio::SimpleAction::new("add-bookmark", None);
+        self.add_action(&action_add_bookmark);
+        let action_remove_bookmark = gio::SimpleAction::new("remove-bookmark", None);
+        self.add_action(&action_remove_bookmark);
+        let action_bookmark_next = gio::SimpleAction::new("bookmark-next", None);
+        self.add_action(&action_bookmark_next);
+        let action_bookmark_prev = gio::SimpleAction::new("bookmark-prev", None);
+        self.add_action(&action_bookmark_prev);
         let action_selection_trash = gio::SimpleAction::new("selection-trash", None);
         self.add_action(&action_selection_trash);
         let action_selection_duplicate = gio::SimpleAction::new("selection-duplicate", None);
@@ -936,6 +944,65 @@ impl RnAppWindow {
             }
         ));
 
+        // Add a bookmark for the current view
+        action_add_bookmark.connect_activate(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |_, _| {
+                let Some(canvas) = appwindow.active_tab_canvas() else {
+                    return;
+                };
+                let widget_flags = canvas.engine_mut().add_bookmark();
+                appwindow.handle_widget_flags(widget_flags, &canvas);
+                appwindow
+                    .overlays()
+                    .dispatch_toast_text(&gettext("Added bookmark"), None);
+            }
+        ));
+
+        // Remove the bookmark closest to the center of the current view
+        action_remove_bookmark.connect_activate(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |_, _| {
+                let Some(canvas) = appwindow.active_tab_canvas() else {
+                    return;
+                };
+                let widget_flags = canvas.engine_mut().remove_bookmark_in_viewport();
+                match widget_flags {
+                    Some(widget_flags) => {
+                        appwindow.handle_widget_flags(widget_flags, &canvas);
+                        appwindow
+                            .overlays()
+                            .dispatch_toast_text(&gettext("Removed bookmark"), None);
+                    }
+                    None => {
+                        appwindow
+                            .overlays()
+                            .dispatch_toast_text(&gettext("No bookmark in the current view"), None);
+                    }
+                }
+            }
+        ));
+
+        // Jump to the next bookmark
+        action_bookmark_next.connect_activate(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |_, _| {
+                appwindow.jump_to_adjacent_bookmark(true);
+            }
+        ));
+
+        // Jump to the previous bookmark
+        action_bookmark_prev.connect_activate(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |_, _| {
+                appwindow.jump_to_adjacent_bookmark(false);
+            }
+        ));
+
         // New doc
         action_new_doc.connect_activate(clone!(
             #[weak(rename_to=appwindow)]
@@ -1336,9 +1403,32 @@ impl RnAppWindow {
             )
         });
 
+        app.set_accels_for_action("win.add-bookmark", &["<Ctrl><Shift>b"]);
+        app.set_accels_for_action("win.bookmark-next", &["F2"]);
+        app.set_accels_for_action("win.bookmark-prev", &["<Shift>F2"]);
         // shortcuts for devel build
         if config::PROFILE.to_lowercase().as_str() == "devel" {
             app.set_accels_for_action("win.visual-debug", &["<Ctrl><Shift>v"]);
+        }
+    }
+
+    /// Jump to the bookmark adjacent to the current view, dispatching a toast when the document has no bookmarks.
+    fn jump_to_adjacent_bookmark(&self, forward: bool) {
+        let Some(wrapper) = self.active_tab_wrapper() else {
+            return;
+        };
+
+        // workaround for https://gitlab.gnome.org/GNOME/gtk/-/issues/187
+        wrapper.workaround_cancel_kinetic_scrolling_for_zoom();
+
+        let canvas = wrapper.canvas();
+        let widget_flags = canvas.engine_mut().jump_to_adjacent_bookmark(forward);
+        match widget_flags {
+            Some(widget_flags) => self.handle_widget_flags(widget_flags, &canvas),
+            None => {
+                self.overlays()
+                    .dispatch_toast_text(&gettext("No bookmarks in the document"), None);
+            }
         }
     }
 

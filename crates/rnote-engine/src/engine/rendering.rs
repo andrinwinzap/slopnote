@@ -84,6 +84,45 @@ impl Engine {
             }
         }
 
+        #[cfg(feature = "ui")]
+        {
+            use crate::ext::GrapheneRectExt;
+            use gtk4::{graphene, gsk, prelude::*};
+            use rnote_compose::ext::AabbExt;
+
+            let total_zoom = self.camera.total_zoom();
+            let mut rendernodes: Vec<gsk::RenderNode> = vec![];
+
+            if let Some(image) = &self.bookmark_indicator_image {
+                // Only create the texture once, it is expensive
+                let new_texture = match image.to_memtexture() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!(
+                            "Failed to generate memory-texture of bookmark indicator image, Err: {e:?}"
+                        );
+                        return widget_flags;
+                    }
+                };
+
+                for bookmark in self.document.bookmarks.iter() {
+                    rendernodes.push(
+                        gsk::TextureNode::new(
+                            &new_texture,
+                            &graphene::Rect::from_p2d_aabb(
+                                bookmark_indicator_bounds()
+                                    .scaled(Vector2::splat(1.0 / total_zoom))
+                                    .translate(bookmark.pos),
+                            ),
+                        )
+                        .upcast(),
+                    );
+                }
+            }
+
+            self.bookmark_indicator_rendernodes = rendernodes;
+        }
+
         widget_flags.redraw = true;
         widget_flags
     }
@@ -115,10 +154,12 @@ impl Engine {
         self.store.clear_rendering();
         self.background_tile_image.take();
         self.origin_indicator_image.take();
+        self.bookmark_indicator_image.take();
         #[cfg(feature = "ui")]
         {
             self.background_rendernodes.clear();
             self.origin_indicator_rendernode.take();
+            self.bookmark_indicator_rendernodes.clear();
         }
         widget_flags.redraw = true;
         widget_flags
@@ -146,6 +187,17 @@ impl Engine {
             }
             Err(e) => {
                 error!("Regenerating origin indicator image failed, Err: {e:?}");
+                widget_flags.redraw = true;
+                return widget_flags;
+            }
+        }
+
+        match gen_bookmark_indicator_image(scale_factor) {
+            Ok(image) => {
+                self.bookmark_indicator_image = Some(image);
+            }
+            Err(e) => {
+                error!("Regenerating bookmark indicator image failed, Err: {e:?}");
                 widget_flags.redraw = true;
                 return widget_flags;
             }
@@ -218,6 +270,7 @@ impl Engine {
         snapshot.pop();
 
         self.draw_origin_indicator_to_gtk_snapshot(snapshot)?;
+        self.draw_bookmark_indicators_to_gtk_snapshot(snapshot)?;
 
         snapshot.restore();
         /*
@@ -410,12 +463,70 @@ impl Engine {
 
         Ok(())
     }
+
+    /// Draw the indicators for the bookmarked locations in the document.
+    #[cfg(feature = "ui")]
+    fn draw_bookmark_indicators_to_gtk_snapshot(
+        &self,
+        snapshot: &gtk4::Snapshot,
+    ) -> anyhow::Result<()> {
+        use gtk4::prelude::*;
+
+        for r in self.bookmark_indicator_rendernodes.iter() {
+            snapshot.append_node(r);
+        }
+
+        Ok(())
+    }
 }
 
 /// Origin indicator bounds in document coordinate space.
 fn origin_indicator_bounds() -> Aabb {
     const SIZE: Vector2 = Vector2::splat(17.);
     Aabb::from_half_extents(Vector2::ZERO, SIZE * 0.5)
+}
+
+/// Bookmark indicator bounds in document coordinate space, centered around the bookmark position.
+fn bookmark_indicator_bounds() -> Aabb {
+    const SIZE: Vector2 = Vector2::new(14., 19.);
+    Aabb::from_half_extents(Vector2::ZERO, SIZE * 0.5)
+}
+
+fn gen_bookmark_indicator_image(scale_factor: f64) -> anyhow::Result<Image> {
+    const FILL_COLOR: piet::Color = color::GNOME_BLUES[2];
+    const PATH_COLOR: piet::Color = color::GNOME_BLUES[4];
+    const PATH_WIDTH: f64 = 1.5;
+    // The depth of the notch at the bottom of the bookmark ribbon shape.
+    const NOTCH_DEPTH: f64 = 5.0;
+    let bounds = bookmark_indicator_bounds();
+
+    Image::gen_with_piet(
+        |piet_cx| {
+            let mins = bounds.mins + Vector2::splat(PATH_WIDTH * 0.5);
+            let maxs = bounds.maxs - Vector2::splat(PATH_WIDTH * 0.5);
+            let path = kurbo::BezPath::from_iter([
+                kurbo::PathEl::MoveTo(kurbo::Point::new(mins[0], mins[1])),
+                kurbo::PathEl::LineTo(kurbo::Point::new(maxs[0], mins[1])),
+                kurbo::PathEl::LineTo(kurbo::Point::new(maxs[0], maxs[1])),
+                kurbo::PathEl::LineTo(kurbo::Point::new(
+                    (mins[0] + maxs[0]) * 0.5,
+                    maxs[1] - NOTCH_DEPTH,
+                )),
+                kurbo::PathEl::LineTo(kurbo::Point::new(mins[0], maxs[1])),
+                kurbo::PathEl::ClosePath,
+            ]);
+            piet_cx.fill(path.clone(), &FILL_COLOR);
+            piet_cx.stroke_styled(
+                path,
+                &PATH_COLOR,
+                PATH_WIDTH,
+                &piet::StrokeStyle::default().line_join(piet::LineJoin::Round),
+            );
+            Ok(())
+        },
+        bounds,
+        scale_factor,
+    )
 }
 
 fn gen_origin_indicator_image(scale_factor: f64) -> anyhow::Result<Image> {

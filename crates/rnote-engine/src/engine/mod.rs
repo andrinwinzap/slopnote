@@ -19,7 +19,7 @@ pub use strokecontent::{LayeredStroke, StrokeContent};
 
 // Imports
 use crate::Image;
-use crate::document::Layout;
+use crate::document::{Bookmark, Layout};
 use crate::pens::PenMode;
 use crate::pens::{Pen, PenStyle};
 use crate::store::StrokeKey;
@@ -218,6 +218,12 @@ pub struct Engine {
     #[cfg(feature = "ui")]
     #[serde(skip)]
     origin_indicator_rendernode: Option<gtk4::gsk::RenderNode>,
+    // Bookmark indicator rendering
+    #[serde(skip)]
+    bookmark_indicator_image: Option<Image>,
+    #[cfg(feature = "ui")]
+    #[serde(skip)]
+    bookmark_indicator_rendernodes: Vec<gtk4::gsk::RenderNode>,
 }
 
 impl Default for Engine {
@@ -242,12 +248,17 @@ impl Default for Engine {
             origin_indicator_image: None,
             #[cfg(feature = "ui")]
             origin_indicator_rendernode: None,
+            bookmark_indicator_image: None,
+            #[cfg(feature = "ui")]
+            bookmark_indicator_rendernodes: Vec::default(),
         }
     }
 }
 
 impl Engine {
     pub(crate) const STROKE_BOUNDS_INTERSECTION_TOLERANCE: f64 = 1e-3;
+    /// Distance (in surface coordinates) below which an added bookmark replaces an existing one.
+    pub(crate) const BOOKMARK_MERGE_DIST: f64 = 32.0;
 
     /// Returns the engine's shared config handle (cheap to clone).
     pub fn engine_config(&self) -> &EngineConfigShared {
@@ -647,6 +658,97 @@ impl Engine {
         self.camera_set_rotation(0.0, 0.0) | self.camera_set_offset_expand(new_offset)
     }
 
+    /// Adds a bookmark for the current view (viewport center and zoom).
+    ///
+    /// An already existing bookmark close to the current viewport center is replaced,
+    /// avoiding multiple stacked bookmarks in the same location.
+    pub fn add_bookmark(&mut self) -> WidgetFlags {
+        let bookmark = Bookmark {
+            pos: self.camera.viewport_center(),
+            zoom: self.camera.zoom(),
+        };
+        let merge_dist = Self::BOOKMARK_MERGE_DIST / self.camera.total_zoom();
+        self.document
+            .bookmarks
+            .retain(|b| (b.pos - bookmark.pos).length() > merge_dist);
+        self.document.bookmarks.push(bookmark);
+
+        let mut widget_flags = self.update_background_rendering_current_viewport();
+        widget_flags.store_modified = true;
+        widget_flags
+    }
+
+    /// Removes the bookmark closest to the viewport center that is inside the current viewport.
+    ///
+    /// Returns None when there is no bookmark in the current viewport.
+    pub fn remove_bookmark_in_viewport(&mut self) -> Option<WidgetFlags> {
+        let viewport = self.camera.viewport();
+        let center = self.camera.viewport_center();
+        let (i, _) = self
+            .document
+            .bookmarks
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| viewport.contains_local_point(b.pos))
+            .min_by(|(_, a), (_, b)| {
+                (a.pos - center)
+                    .length()
+                    .total_cmp(&(b.pos - center).length())
+            })?;
+        self.document.bookmarks.remove(i);
+
+        let mut widget_flags = self.update_background_rendering_current_viewport();
+        widget_flags.store_modified = true;
+        Some(widget_flags)
+    }
+
+    /// Jumps to the bookmark adjacent to the current viewport center,
+    /// in document order (rows top to bottom, then left to right), wrapping around.
+    ///
+    /// Returns None when the document has no bookmarks.
+    pub fn jump_to_adjacent_bookmark(&mut self, forward: bool) -> Option<WidgetFlags> {
+        // Tolerance when comparing the viewport center against bookmark positions, so that jumping
+        // continues from the bookmark that was jumped to previously.
+        const POS_TOLERANCE: f64 = 1.0;
+
+        let cmp_keys = |a: (f64, f64), b: (f64, f64)| -> std::cmp::Ordering {
+            if (a.0 - b.0).abs() > POS_TOLERANCE {
+                return a.0.total_cmp(&b.0);
+            }
+            if (a.1 - b.1).abs() > POS_TOLERANCE {
+                return a.1.total_cmp(&b.1);
+            }
+            std::cmp::Ordering::Equal
+        };
+
+        if self.document.bookmarks.is_empty() {
+            return None;
+        }
+        let mut bookmarks = self.document.bookmarks.clone();
+        bookmarks.sort_by(|a, b| a.order_key().partial_cmp(&b.order_key()).unwrap());
+
+        let center = self.camera.viewport_center();
+        let current_key = (center[1], center[0]);
+        let target = if forward {
+            bookmarks
+                .iter()
+                .find(|b| cmp_keys(b.order_key(), current_key).is_gt())
+                .or_else(|| bookmarks.first())
+        } else {
+            bookmarks
+                .iter()
+                .rev()
+                .find(|b| cmp_keys(b.order_key(), current_key).is_lt())
+                .or_else(|| bookmarks.last())
+        }
+        .copied()?;
+
+        let mut widget_flags = self.zoom_w_timeout(target.zoom);
+        widget_flags |= self.camera.set_viewport_center(target.pos);
+        widget_flags |= self.doc_expand_autoexpand();
+        Some(widget_flags | self.update_rendering_current_viewport())
+    }
+
     /// Resize the doc when in autoexpanding layouts. called e.g. when finishing a new stroke.
     ///
     /// Background rendering then needs to be updated.
@@ -962,5 +1064,106 @@ impl Engine {
     pub fn current_pen_style_w_override(&self) -> PenStyle {
         self.penholder
             .current_pen_style_w_override(&engine_view!(self))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_relative_eq;
+
+    fn engine_w_viewport_center(center: Vector2) -> Engine {
+        let mut engine = Engine::default();
+        let _ = engine.camera.set_viewport_center(center);
+        engine
+    }
+
+    #[test]
+    fn add_bookmark_replaces_close_existing() {
+        let mut engine = engine_w_viewport_center(Vector2::new(100.0, 100.0));
+
+        let _ = engine.add_bookmark();
+        assert_eq!(engine.document.bookmarks.len(), 1);
+
+        // adding another bookmark close to the existing one replaces it
+        let _ = engine
+            .camera
+            .set_viewport_center(Vector2::new(105.0, 100.0));
+        let _ = engine.add_bookmark();
+        assert_eq!(engine.document.bookmarks.len(), 1);
+        assert_relative_eq!(engine.document.bookmarks[0].pos, Vector2::new(105.0, 100.0));
+
+        // adding a bookmark further away keeps both
+        let _ = engine
+            .camera
+            .set_viewport_center(Vector2::new(500.0, 100.0));
+        let _ = engine.add_bookmark();
+        assert_eq!(engine.document.bookmarks.len(), 2);
+    }
+
+    #[test]
+    fn remove_bookmark_in_viewport() {
+        let mut engine = engine_w_viewport_center(Vector2::new(100.0, 100.0));
+        let _ = engine.add_bookmark();
+
+        // viewport is centered far away from the bookmark, nothing to remove
+        let _ = engine
+            .camera
+            .set_viewport_center(Vector2::new(5000.0, 5000.0));
+        assert!(engine.remove_bookmark_in_viewport().is_none());
+        assert_eq!(engine.document.bookmarks.len(), 1);
+
+        let _ = engine
+            .camera
+            .set_viewport_center(Vector2::new(120.0, 100.0));
+        assert!(engine.remove_bookmark_in_viewport().is_some());
+        assert!(engine.document.bookmarks.is_empty());
+    }
+
+    #[test]
+    fn jump_to_adjacent_bookmark_cycles_in_document_order() {
+        let mut engine = Engine::default();
+        assert!(engine.jump_to_adjacent_bookmark(true).is_none());
+
+        for pos in [
+            Vector2::new(200.0, 900.0),
+            Vector2::new(700.0, 100.0),
+            Vector2::new(100.0, 100.0),
+        ] {
+            let _ = engine.camera.set_viewport_center(pos);
+            let _ = engine.add_bookmark();
+        }
+
+        // The camera currently is at the last added bookmark (100.0, 100.0).
+        // Jumping forward visits the bookmarks in document order (top to bottom, left to right) and wraps around.
+        for expected_pos in [
+            Vector2::new(700.0, 100.0),
+            Vector2::new(200.0, 900.0),
+            Vector2::new(100.0, 100.0),
+            Vector2::new(700.0, 100.0),
+        ] {
+            assert!(engine.jump_to_adjacent_bookmark(true).is_some());
+            assert_relative_eq!(engine.camera.viewport_center(), expected_pos);
+        }
+
+        // jumping backwards reverses the order, wrapping around to the bottom-most bookmark
+        for expected_pos in [Vector2::new(100.0, 100.0), Vector2::new(200.0, 900.0)] {
+            assert!(engine.jump_to_adjacent_bookmark(false).is_some());
+            assert_relative_eq!(engine.camera.viewport_center(), expected_pos);
+        }
+    }
+
+    #[test]
+    fn document_bookmarks_serialization() {
+        let mut engine = engine_w_viewport_center(Vector2::new(123.0, 456.0));
+        let _ = engine.add_bookmark();
+
+        let serialized = serde_json::to_string(&engine.document).unwrap();
+        let deserialized: Document = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.bookmarks, engine.document.bookmarks);
+
+        // documents from older versions without the bookmarks field deserialize to no bookmarks
+        let deserialized: Document = serde_json::from_str("{}").unwrap();
+        assert!(deserialized.bookmarks.is_empty());
     }
 }

@@ -169,6 +169,24 @@
                 <property name="accelerator">&lt;ctrl&gt;Home</property>
               </object>
             </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Add Bookmark</property>
+                <property name="accelerator">&lt;ctrl&gt;&lt;shift&gt;b</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Jump to the Next Bookmark</property>
+                <property name="accelerator">F2</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Jump to the Previous Bookmark</property>
+                <property name="accelerator">&lt;shift&gt;F2</property>
+              </object>
+            </child>
           </object>
         </child>
         <child>

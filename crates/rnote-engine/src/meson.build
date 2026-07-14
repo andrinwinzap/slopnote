@@ -3,6 +3,7 @@ rnote_engine_sources = files(
     'audioplayer.rs',
     'camera.rs',
     'document/background.rs',
+    'document/bookmark.rs',
     'document/config.rs',
     'document/format.rs',
     'document/layout.rs',

@@ -1,11 +1,13 @@
 // Modules
 pub mod background;
+pub mod bookmark;
 pub mod config;
 pub mod format;
 pub mod layout;
 
 // Re-exports
 pub use background::Background;
+pub use bookmark::Bookmark;
 pub use config::DocumentConfig;
 pub use format::Format;
 pub use layout::Layout;
@@ -34,6 +36,9 @@ pub struct Document {
     pub width: f64,
     #[serde(rename = "height", with = "rnote_compose::serialize::f64_dp3")]
     pub height: f64,
+    /// Bookmarked locations in the document.
+    #[serde(rename = "bookmarks")]
+    pub bookmarks: Vec<Bookmark>,
 }
 
 impl Default for Document {
@@ -44,6 +49,7 @@ impl Default for Document {
             y: 0.0,
             width: Format::default().width(),
             height: Format::default().height(),
+            bookmarks: Vec::new(),
         }
     }
 }
