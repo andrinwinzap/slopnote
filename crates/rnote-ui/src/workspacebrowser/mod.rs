@@ -1,6 +1,6 @@
 // Modules
 mod filerow;
-mod widgethelper;
+pub(crate) mod widgethelper;
 mod workspaceactions;
 pub(crate) mod workspacesbar;
 

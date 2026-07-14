@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Stores the viewport center position (in document coordinate space) and the camera zoom,
 /// so jumping to a bookmark restores the exact view.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename = "bookmark")]
 pub struct Bookmark {
     /// The bookmarked viewport center in document coordinate space.
@@ -15,6 +15,9 @@ pub struct Bookmark {
     /// The camera zoom of the bookmarked view.
     #[serde(rename = "zoom")]
     pub zoom: f64,
+    /// An optional user-given name. Empty when not named.
+    #[serde(rename = "name")]
+    pub name: String,
 }
 
 impl Default for Bookmark {
@@ -22,6 +25,7 @@ impl Default for Bookmark {
         Self {
             pos: Vector2::ZERO,
             zoom: 1.0,
+            name: String::new(),
         }
     }
 }

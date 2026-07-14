@@ -666,6 +666,7 @@ impl Engine {
         let bookmark = Bookmark {
             pos: self.camera.viewport_center(),
             zoom: self.camera.zoom(),
+            ..Default::default()
         };
         let merge_dist = Self::BOOKMARK_MERGE_DIST / self.camera.total_zoom();
         self.document
@@ -741,7 +742,7 @@ impl Engine {
                 .find(|b| cmp_keys(b.order_key(), current_key).is_lt())
                 .or_else(|| bookmarks.last())
         }
-        .copied()?;
+        .cloned()?;
 
         Some(self.jump_to_bookmark(target))
     }
@@ -753,7 +754,7 @@ impl Engine {
             .document
             .bookmarks
             .iter()
-            .copied()
+            .cloned()
             .enumerate()
             .collect();
         bookmarks.sort_by(|(_, a), (_, b)| a.order_key().partial_cmp(&b.order_key()).unwrap());
@@ -764,8 +765,20 @@ impl Engine {
     ///
     /// Returns None when the index is out of bounds.
     pub fn jump_to_bookmark_at(&mut self, index: usize) -> Option<WidgetFlags> {
-        let bookmark = *self.document.bookmarks.get(index)?;
+        let bookmark = self.document.bookmarks.get(index)?.clone();
         Some(self.jump_to_bookmark(bookmark))
+    }
+
+    /// Renames the bookmark at `index` into [Document]'s bookmarks.
+    ///
+    /// Returns None when the index is out of bounds.
+    pub fn rename_bookmark_at(&mut self, index: usize, name: String) -> Option<WidgetFlags> {
+        let bookmark = self.document.bookmarks.get_mut(index)?;
+        bookmark.name = name;
+
+        let mut widget_flags = WidgetFlags::default();
+        widget_flags.store_modified = true;
+        Some(widget_flags)
     }
 
     /// Removes the bookmark at `index` into [Document]'s bookmarks.
@@ -1198,6 +1211,12 @@ mod tests {
     fn document_bookmarks_serialization() {
         let mut engine = engine_w_viewport_center(Vector2::new(123.0, 456.0));
         let _ = engine.add_bookmark();
+        assert!(
+            engine
+                .rename_bookmark_at(0, String::from("Chapter 1"))
+                .is_some()
+        );
+        assert!(engine.rename_bookmark_at(1, String::new()).is_none());
 
         let serialized = serde_json::to_string(&engine.document).unwrap();
         let deserialized: Document = serde_json::from_str(&serialized).unwrap();

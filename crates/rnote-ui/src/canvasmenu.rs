@@ -1,9 +1,10 @@
 // Imports
 use crate::appwindow::RnAppWindow;
+use crate::workspacebrowser::widgethelper;
 use gettextrs::gettext;
 use gtk4::{
-    Button, CompositeTemplate, Label, ListBox, ListBoxRow, MenuButton, PopoverMenu, Widget, gio,
-    glib, glib::clone, prelude::*, subclass::prelude::*,
+    Align, Button, CompositeTemplate, Entry, Label, ListBox, ListBoxRow, MenuButton, PopoverMenu,
+    Widget, gio, glib, glib::clone, pango, prelude::*, subclass::prelude::*,
 };
 use rnote_engine::Camera;
 
@@ -161,16 +162,61 @@ impl RnCanvasMenu {
             } else {
                 1
             };
-            let label = Label::builder()
-                .label(format!(
-                    "{} {} · {:.0}%",
-                    gettext("Page"),
-                    page_no,
-                    bookmark.zoom * 100.0
-                ))
+            let location_text = format!(
+                "{} {} · {:.0}%",
+                gettext("Page"),
+                page_no,
+                bookmark.zoom * 100.0
+            );
+
+            let labels_box = gtk4::Box::builder()
+                .orientation(gtk4::Orientation::Vertical)
                 .hexpand(true)
-                .xalign(0.0)
+                .valign(Align::Center)
                 .build();
+            if bookmark.name.is_empty() {
+                let title_label = Label::builder()
+                    .label(location_text)
+                    .xalign(0.0)
+                    .ellipsize(pango::EllipsizeMode::End)
+                    .build();
+                labels_box.append(&title_label);
+            } else {
+                let title_label = Label::builder()
+                    .label(&bookmark.name)
+                    .xalign(0.0)
+                    .ellipsize(pango::EllipsizeMode::End)
+                    .build();
+                let location_label = Label::builder()
+                    .label(location_text)
+                    .xalign(0.0)
+                    .css_classes(["caption", "dim-label"])
+                    .build();
+                labels_box.append(&title_label);
+                labels_box.append(&location_label);
+            }
+
+            let rename_button = Button::builder()
+                .icon_name("edit-symbolic")
+                .tooltip_text(gettext("Rename Bookmark"))
+                .css_classes(["flat"])
+                .build();
+            rename_button.connect_clicked(clone!(
+                #[weak(rename_to=canvasmenu)]
+                self,
+                #[weak]
+                appwindow,
+                #[strong(rename_to=name)]
+                bookmark.name,
+                move |button| {
+                    canvasmenu.rename_bookmark_dialog(
+                        &appwindow,
+                        button,
+                        engine_index as u32,
+                        &name,
+                    );
+                }
+            ));
 
             let remove_button = Button::builder()
                 .icon_name("trash-symbolic")
@@ -182,10 +228,11 @@ impl RnCanvasMenu {
 
             let row_box = gtk4::Box::builder()
                 .orientation(gtk4::Orientation::Horizontal)
-                .spacing(12)
+                .spacing(6)
                 .margin_start(6)
                 .build();
-            row_box.append(&label);
+            row_box.append(&labels_box);
+            row_box.append(&rename_button);
             row_box.append(&remove_button);
 
             let row = ListBoxRow::builder().child(&row_box).build();
@@ -193,5 +240,73 @@ impl RnCanvasMenu {
             row.set_action_target_value(Some(&(engine_index as u32).to_variant()));
             listbox.append(&row);
         }
+    }
+
+    /// Shows a small dialog popover on `parent` for renaming the bookmark at `engine_index`.
+    fn rename_bookmark_dialog(
+        &self,
+        appwindow: &RnAppWindow,
+        parent: &impl IsA<Widget>,
+        engine_index: u32,
+        current_name: &str,
+    ) {
+        let entry = Entry::builder()
+            .text(current_name)
+            .placeholder_text(gettext("Bookmark name"))
+            .build();
+        let label = Label::builder()
+            .margin_bottom(12)
+            .halign(Align::Center)
+            .label(gettext("Rename Bookmark"))
+            .width_chars(24)
+            .ellipsize(pango::EllipsizeMode::End)
+            .build();
+        label.add_css_class("title-4");
+
+        let (apply_button, popover) = widgethelper::create_entry_dialog(&entry, &label);
+        popover.set_parent(parent);
+        popover.connect_closed(|popover| {
+            glib::idle_add_local_once(clone!(
+                #[weak]
+                popover,
+                move || {
+                    popover.unparent();
+                }
+            ));
+        });
+
+        apply_button.connect_clicked(clone!(
+            #[weak(rename_to=canvasmenu)]
+            self,
+            #[weak]
+            appwindow,
+            #[weak]
+            popover,
+            #[weak]
+            entry,
+            move |_| {
+                if let Some(canvas) = appwindow.active_tab_canvas() {
+                    let widget_flags = canvas
+                        .engine_mut()
+                        .rename_bookmark_at(engine_index as usize, entry.text().trim().to_owned());
+                    if let Some(widget_flags) = widget_flags {
+                        appwindow.handle_widget_flags(widget_flags, &canvas);
+                    }
+                }
+                popover.popdown();
+                glib::idle_add_local_once(clone!(
+                    #[weak]
+                    canvasmenu,
+                    #[weak]
+                    appwindow,
+                    move || {
+                        canvasmenu.refresh_bookmarks(&appwindow);
+                    }
+                ));
+            }
+        ));
+
+        popover.popup();
+        entry.grab_focus();
     }
 }
