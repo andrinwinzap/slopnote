@@ -1,8 +1,9 @@
 // Imports
 use crate::appwindow::RnAppWindow;
+use gettextrs::gettext;
 use gtk4::{
-    Button, CompositeTemplate, MenuButton, PopoverMenu, Widget, gio, glib, prelude::*,
-    subclass::prelude::*,
+    Button, CompositeTemplate, Label, ListBox, ListBoxRow, MenuButton, PopoverMenu, Widget, gio,
+    glib, glib::clone, prelude::*, subclass::prelude::*,
 };
 use rnote_engine::Camera;
 
@@ -32,6 +33,8 @@ mod imp {
         pub(crate) rotation_reset_button: TemplateChild<Button>,
         #[template_child]
         pub(crate) fixedsize_quickactions_box: TemplateChild<gtk4::Box>,
+        #[template_child]
+        pub(crate) bookmarks_listbox: TemplateChild<ListBox>,
     }
 
     #[glib::object_subclass]
@@ -99,9 +102,31 @@ impl RnCanvasMenu {
         self.imp().fixedsize_quickactions_box.get()
     }
 
-    pub(crate) fn init(&self, _appwindow: &RnAppWindow) {
+    pub(crate) fn init(&self, appwindow: &RnAppWindow) {
         self.refresh_zoom_reset_label(Camera::ZOOM_DEFAULT);
         self.refresh_rotation_reset_label(0.0);
+
+        let bookmarks_placeholder = Label::builder()
+            .label(gettext("No bookmarks"))
+            .margin_top(6)
+            .margin_bottom(6)
+            .css_classes(["dim-label"])
+            .build();
+        self.imp()
+            .bookmarks_listbox
+            .set_placeholder(Some(&bookmarks_placeholder));
+
+        // The bookmarks of the active tab can change while the popover is closed,
+        // so refresh the list every time it gets opened.
+        self.imp().popovermenu.connect_map(clone!(
+            #[weak(rename_to=canvasmenu)]
+            self,
+            #[weak]
+            appwindow,
+            move |_| {
+                canvasmenu.refresh_bookmarks(&appwindow);
+            }
+        ));
     }
 
     pub(crate) fn refresh_zoom_reset_label(&self, zoom: f64) {
@@ -114,5 +139,59 @@ impl RnCanvasMenu {
         self.imp()
             .rotation_reset_button
             .set_label(format!("{:.0}°", rotation.to_degrees()).as_str());
+    }
+
+    /// Rebuild the bookmarks list from the engine of the active tab.
+    pub(crate) fn refresh_bookmarks(&self, appwindow: &RnAppWindow) {
+        let listbox = self.imp().bookmarks_listbox.get();
+
+        while let Some(row) = listbox.row_at_index(0) {
+            listbox.remove(&row);
+        }
+
+        let Some(canvas) = appwindow.active_tab_canvas() else {
+            return;
+        };
+        let bookmarks = canvas.engine_ref().bookmarks_in_document_order();
+        let format_height = canvas.engine_ref().document.config.format.height();
+
+        for (engine_index, bookmark) in bookmarks {
+            let page_no = if format_height > 0.0 {
+                ((bookmark.pos[1] / format_height).floor() as i64 + 1).max(1)
+            } else {
+                1
+            };
+            let label = Label::builder()
+                .label(format!(
+                    "{} {} · {:.0}%",
+                    gettext("Page"),
+                    page_no,
+                    bookmark.zoom * 100.0
+                ))
+                .hexpand(true)
+                .xalign(0.0)
+                .build();
+
+            let remove_button = Button::builder()
+                .icon_name("trash-symbolic")
+                .tooltip_text(gettext("Remove Bookmark"))
+                .css_classes(["flat"])
+                .build();
+            remove_button.set_action_name(Some("win.remove-bookmark-at"));
+            remove_button.set_action_target_value(Some(&(engine_index as u32).to_variant()));
+
+            let row_box = gtk4::Box::builder()
+                .orientation(gtk4::Orientation::Horizontal)
+                .spacing(12)
+                .margin_start(6)
+                .build();
+            row_box.append(&label);
+            row_box.append(&remove_button);
+
+            let row = ListBoxRow::builder().child(&row_box).build();
+            row.set_action_name(Some("win.jump-to-bookmark"));
+            row.set_action_target_value(Some(&(engine_index as u32).to_variant()));
+            listbox.append(&row);
+        }
     }
 }

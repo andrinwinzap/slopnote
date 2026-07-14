@@ -40,6 +40,7 @@ crates/rnote-ui/src/appwindow/imp.rs
 crates/rnote-ui/src/appwindow/mod.rs
 crates/rnote-ui/src/canvas/imexport.rs
 crates/rnote-ui/src/canvas/mod.rs
+crates/rnote-ui/src/canvasmenu.rs
 crates/rnote-ui/src/canvaswrapper.rs
 crates/rnote-ui/src/dialogs/export.rs
 crates/rnote-ui/src/dialogs/import.rs

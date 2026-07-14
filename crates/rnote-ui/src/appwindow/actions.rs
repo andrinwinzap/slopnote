@@ -99,6 +99,12 @@ impl RnAppWindow {
         self.add_action(&action_bookmark_next);
         let action_bookmark_prev = gio::SimpleAction::new("bookmark-prev", None);
         self.add_action(&action_bookmark_prev);
+        let action_jump_to_bookmark =
+            gio::SimpleAction::new("jump-to-bookmark", Some(&u32::static_variant_type()));
+        self.add_action(&action_jump_to_bookmark);
+        let action_remove_bookmark_at =
+            gio::SimpleAction::new("remove-bookmark-at", Some(&u32::static_variant_type()));
+        self.add_action(&action_remove_bookmark_at);
         let action_selection_trash = gio::SimpleAction::new("selection-trash", None);
         self.add_action(&action_selection_trash);
         let action_selection_duplicate = gio::SimpleAction::new("selection-duplicate", None);
@@ -955,6 +961,10 @@ impl RnAppWindow {
                 let widget_flags = canvas.engine_mut().add_bookmark();
                 appwindow.handle_widget_flags(widget_flags, &canvas);
                 appwindow
+                    .main_header()
+                    .canvasmenu()
+                    .refresh_bookmarks(&appwindow);
+                appwindow
                     .overlays()
                     .dispatch_toast_text(&gettext("Added bookmark"), None);
             }
@@ -973,6 +983,10 @@ impl RnAppWindow {
                     Some(widget_flags) => {
                         appwindow.handle_widget_flags(widget_flags, &canvas);
                         appwindow
+                            .main_header()
+                            .canvasmenu()
+                            .refresh_bookmarks(&appwindow);
+                        appwindow
                             .overlays()
                             .dispatch_toast_text(&gettext("Removed bookmark"), None);
                     }
@@ -982,6 +996,52 @@ impl RnAppWindow {
                             .dispatch_toast_text(&gettext("No bookmark in the current view"), None);
                     }
                 }
+            }
+        ));
+
+        // Jump to the bookmark with the given index
+        action_jump_to_bookmark.connect_activate(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |_, target| {
+                let Some(index) = target.and_then(|t| t.get::<u32>()) else {
+                    return;
+                };
+                let Some(wrapper) = appwindow.active_tab_wrapper() else {
+                    return;
+                };
+
+                // workaround for https://gitlab.gnome.org/GNOME/gtk/-/issues/187
+                wrapper.workaround_cancel_kinetic_scrolling_for_zoom();
+
+                let canvas = wrapper.canvas();
+                let widget_flags = canvas.engine_mut().jump_to_bookmark_at(index as usize);
+                if let Some(widget_flags) = widget_flags {
+                    appwindow.handle_widget_flags(widget_flags, &canvas);
+                }
+                appwindow.main_header().canvasmenu().popovermenu().popdown();
+            }
+        ));
+
+        // Remove the bookmark with the given index
+        action_remove_bookmark_at.connect_activate(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |_, target| {
+                let Some(index) = target.and_then(|t| t.get::<u32>()) else {
+                    return;
+                };
+                let Some(canvas) = appwindow.active_tab_canvas() else {
+                    return;
+                };
+                let widget_flags = canvas.engine_mut().remove_bookmark_at(index as usize);
+                if let Some(widget_flags) = widget_flags {
+                    appwindow.handle_widget_flags(widget_flags, &canvas);
+                }
+                appwindow
+                    .main_header()
+                    .canvasmenu()
+                    .refresh_bookmarks(&appwindow);
             }
         ));
 

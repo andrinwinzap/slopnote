@@ -743,10 +743,51 @@ impl Engine {
         }
         .copied()?;
 
-        let mut widget_flags = self.zoom_w_timeout(target.zoom);
-        widget_flags |= self.camera.set_viewport_center(target.pos);
+        Some(self.jump_to_bookmark(target))
+    }
+
+    /// The document bookmarks together with their indices into [Document]'s bookmarks,
+    /// sorted in document order (rows top to bottom, then left to right).
+    pub fn bookmarks_in_document_order(&self) -> Vec<(usize, Bookmark)> {
+        let mut bookmarks: Vec<(usize, Bookmark)> = self
+            .document
+            .bookmarks
+            .iter()
+            .copied()
+            .enumerate()
+            .collect();
+        bookmarks.sort_by(|(_, a), (_, b)| a.order_key().partial_cmp(&b.order_key()).unwrap());
+        bookmarks
+    }
+
+    /// Jumps to the bookmark at `index` into [Document]'s bookmarks.
+    ///
+    /// Returns None when the index is out of bounds.
+    pub fn jump_to_bookmark_at(&mut self, index: usize) -> Option<WidgetFlags> {
+        let bookmark = *self.document.bookmarks.get(index)?;
+        Some(self.jump_to_bookmark(bookmark))
+    }
+
+    /// Removes the bookmark at `index` into [Document]'s bookmarks.
+    ///
+    /// Returns None when the index is out of bounds.
+    pub fn remove_bookmark_at(&mut self, index: usize) -> Option<WidgetFlags> {
+        if index >= self.document.bookmarks.len() {
+            return None;
+        }
+        self.document.bookmarks.remove(index);
+
+        let mut widget_flags = self.update_background_rendering_current_viewport();
+        widget_flags.store_modified = true;
+        Some(widget_flags)
+    }
+
+    /// Restores the view of the given bookmark (viewport center and zoom).
+    fn jump_to_bookmark(&mut self, bookmark: Bookmark) -> WidgetFlags {
+        let mut widget_flags = self.zoom_w_timeout(bookmark.zoom);
+        widget_flags |= self.camera.set_viewport_center(bookmark.pos);
         widget_flags |= self.doc_expand_autoexpand();
-        Some(widget_flags | self.update_rendering_current_viewport())
+        widget_flags | self.update_rendering_current_viewport()
     }
 
     /// Resize the doc when in autoexpanding layouts. called e.g. when finishing a new stroke.
