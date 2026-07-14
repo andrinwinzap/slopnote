@@ -218,6 +218,10 @@ pub struct Engine {
     #[cfg(feature = "ui")]
     #[serde(skip)]
     origin_indicator_rendernode: Option<gtk4::gsk::RenderNode>,
+    // The view (viewport center and zoom) before the most recent bookmark jump,
+    // used for jumping back to it.
+    #[serde(skip)]
+    view_before_bookmark_jump: Option<Bookmark>,
     // Bookmark indicator rendering
     //
     // Only the currently highlighted bookmark (e.g. hovered in the UI) gets an indicator drawn.
@@ -252,6 +256,7 @@ impl Default for Engine {
             origin_indicator_image: None,
             #[cfg(feature = "ui")]
             origin_indicator_rendernode: None,
+            view_before_bookmark_jump: None,
             highlighted_bookmark: None,
             bookmark_indicator_image: None,
             #[cfg(feature = "ui")]
@@ -810,8 +815,27 @@ impl Engine {
         self.update_background_rendering_current_viewport()
     }
 
+    /// Jumps back to the view (viewport center and zoom) before the most recent bookmark jump.
+    ///
+    /// Jumping back is itself a bookmark jump, so activating it repeatedly toggles
+    /// between the two most recent views.
+    ///
+    /// Returns None when no bookmark jump happened yet.
+    pub fn bookmark_jump_back(&mut self) -> Option<WidgetFlags> {
+        let view = self.view_before_bookmark_jump.clone()?;
+        Some(self.jump_to_bookmark(view))
+    }
+
     /// Restores the view of the given bookmark (viewport center and zoom).
+    ///
+    /// Remembers the current view for jumping back to it.
     fn jump_to_bookmark(&mut self, bookmark: Bookmark) -> WidgetFlags {
+        self.view_before_bookmark_jump = Some(Bookmark {
+            pos: self.camera.viewport_center(),
+            zoom: self.camera.zoom(),
+            ..Default::default()
+        });
+
         let mut widget_flags = self.zoom_w_timeout(bookmark.zoom);
         widget_flags |= self.camera.set_viewport_center(bookmark.pos);
         widget_flags |= self.doc_expand_autoexpand();
@@ -1220,6 +1244,30 @@ mod tests {
             assert!(engine.jump_to_adjacent_bookmark(false).is_some());
             assert_relative_eq!(engine.camera.viewport_center(), expected_pos);
         }
+    }
+
+    #[test]
+    fn bookmark_jump_back_toggles_between_last_two_views() {
+        let mut engine = engine_w_viewport_center(Vector2::new(100.0, 100.0));
+        let _ = engine.add_bookmark();
+
+        // no bookmark jump happened yet
+        assert!(engine.bookmark_jump_back().is_none());
+
+        let _ = engine
+            .camera
+            .set_viewport_center(Vector2::new(3000.0, 4000.0));
+        assert!(engine.jump_to_adjacent_bookmark(true).is_some());
+        assert_relative_eq!(engine.camera.viewport_center(), Vector2::new(100.0, 100.0));
+
+        // jumping back restores the view from before the jump, repeating it toggles
+        assert!(engine.bookmark_jump_back().is_some());
+        assert_relative_eq!(
+            engine.camera.viewport_center(),
+            Vector2::new(3000.0, 4000.0)
+        );
+        assert!(engine.bookmark_jump_back().is_some());
+        assert_relative_eq!(engine.camera.viewport_center(), Vector2::new(100.0, 100.0));
     }
 
     #[test]

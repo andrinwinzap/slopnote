@@ -99,6 +99,8 @@ impl RnAppWindow {
         self.add_action(&action_bookmark_next);
         let action_bookmark_prev = gio::SimpleAction::new("bookmark-prev", None);
         self.add_action(&action_bookmark_prev);
+        let action_bookmark_jump_back = gio::SimpleAction::new("bookmark-jump-back", None);
+        self.add_action(&action_bookmark_jump_back);
         let action_jump_to_bookmark =
             gio::SimpleAction::new("jump-to-bookmark", Some(&u32::static_variant_type()));
         self.add_action(&action_jump_to_bookmark);
@@ -999,6 +1001,31 @@ impl RnAppWindow {
             }
         ));
 
+        // Jump back to the view before the most recent bookmark jump
+        action_bookmark_jump_back.connect_activate(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |_, _| {
+                let Some(wrapper) = appwindow.active_tab_wrapper() else {
+                    return;
+                };
+
+                // workaround for https://gitlab.gnome.org/GNOME/gtk/-/issues/187
+                wrapper.workaround_cancel_kinetic_scrolling_for_zoom();
+
+                let canvas = wrapper.canvas();
+                let widget_flags = canvas.engine_mut().bookmark_jump_back();
+                match widget_flags {
+                    Some(widget_flags) => appwindow.handle_widget_flags(widget_flags, &canvas),
+                    None => {
+                        appwindow
+                            .overlays()
+                            .dispatch_toast_text(&gettext("No view to jump back to"), None);
+                    }
+                }
+            }
+        ));
+
         // Jump to the bookmark with the given index
         action_jump_to_bookmark.connect_activate(clone!(
             #[weak(rename_to=appwindow)]
@@ -1466,6 +1493,7 @@ impl RnAppWindow {
         app.set_accels_for_action("win.add-bookmark", &["<Ctrl><Shift>b"]);
         app.set_accels_for_action("win.bookmark-next", &["F2"]);
         app.set_accels_for_action("win.bookmark-prev", &["<Shift>F2"]);
+        app.set_accels_for_action("win.bookmark-jump-back", &["<Ctrl>F2"]);
         // shortcuts for devel build
         if config::PROFILE.to_lowercase().as_str() == "devel" {
             app.set_accels_for_action("win.visual-debug", &["<Ctrl><Shift>v"]);

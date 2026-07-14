@@ -114,6 +114,14 @@
                   <property name="hexpand">true</property>
                 </object>
               </child>
+              <child>
+                <object class="GtkButton" id="bookmark_jump_back_button">
+                  <property name="icon_name">edit-undo-symbolic</property>
+                  <property name="tooltip_text" translatable="yes">Jump Back to the Previous View</property>
+                  <property name="action-name">win.bookmark-jump-back</property>
+                  <property name="hexpand">true</property>
+                </object>
+              </child>
             </object>
           </child>
           <child>
