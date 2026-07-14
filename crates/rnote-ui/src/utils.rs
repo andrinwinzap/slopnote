@@ -10,6 +10,32 @@ use std::cell::Ref;
 use std::path::{Path, PathBuf};
 use std::slice::Iter;
 
+/// Creates a shortcut controller with the bookmark shortcuts, activating the `win.` bookmark actions.
+///
+/// The canvas key controller captures key events before window-level accels get a chance to handle them,
+/// and open popovers have their own keyboard grab which window-level accels don't reach at all.
+/// To make the bookmark shortcuts reliable they are instead added with this controller in the capture phase
+/// to both the appwindow and the canvas menu popover.
+pub(crate) fn new_bookmark_shortcuts_controller() -> gtk4::ShortcutController {
+    let controller = gtk4::ShortcutController::new();
+    controller.set_name(Some("bookmark_shortcuts_controller"));
+    controller.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    for (trigger, action) in [
+        ("<Ctrl><Shift>b", "win.add-bookmark"),
+        ("F2", "win.bookmark-next"),
+        ("<Shift>F2", "win.bookmark-prev"),
+        ("<Ctrl>F2", "win.bookmark-jump-back"),
+    ] {
+        controller.add_shortcut(
+            gtk4::Shortcut::builder()
+                .trigger(&gtk4::ShortcutTrigger::parse_string(trigger).unwrap())
+                .action(&gtk4::NamedAction::new(action))
+                .build(),
+        );
+    }
+    controller
+}
+
 /// The suffix delimiter when duplicating/renaming already existing files
 pub(crate) const FILE_DUP_SUFFIX_DELIM: &str = " - ";
 /// The suffix delimiter when duplicating/renaming already existing files for usage in a regular expression

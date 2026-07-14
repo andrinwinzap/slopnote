@@ -136,6 +136,12 @@ impl RnCanvasMenu {
                 set_highlighted_bookmark(&appwindow, None);
             }
         ));
+
+        // The popover has its own keyboard grab which the appwindow shortcuts don't reach,
+        // so the bookmark shortcuts are added to it as well.
+        self.imp()
+            .popovermenu
+            .add_controller(crate::utils::new_bookmark_shortcuts_controller());
     }
 
     pub(crate) fn refresh_zoom_reset_label(&self, zoom: f64) {

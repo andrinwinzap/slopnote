@@ -1489,10 +1489,9 @@ impl RnAppWindow {
             )
         });
 
-        app.set_accels_for_action("win.add-bookmark", &["<Ctrl><Shift>b"]);
-        app.set_accels_for_action("win.bookmark-next", &["F2"]);
-        app.set_accels_for_action("win.bookmark-prev", &["<Shift>F2"]);
-        app.set_accels_for_action("win.bookmark-jump-back", &["<Ctrl>F2"]);
+        // The bookmark shortcuts are added with a capture-phase shortcut controller instead of
+        // application accels, so that they aren't captured by the canvas key controller first.
+        self.add_controller(crate::utils::new_bookmark_shortcuts_controller());
         // shortcuts for devel build
         if config::PROFILE.to_lowercase().as_str() == "devel" {
             app.set_accels_for_action("win.visual-debug", &["<Ctrl><Shift>v"]);
