@@ -134,6 +134,12 @@ impl RnCanvasMenu {
             appwindow,
             move |_| {
                 set_highlighted_bookmark(&appwindow, None);
+
+                // Return the keyboard focus to the canvas. If it stays on the menubutton,
+                // keyboard shortcuts stop working until the canvas is focused again by drawing.
+                if let Some(canvas) = appwindow.active_tab_canvas() {
+                    canvas.grab_focus();
+                }
             }
         ));
 

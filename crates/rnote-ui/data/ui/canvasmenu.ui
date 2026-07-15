@@ -7,6 +7,7 @@
     <child>
       <object class="GtkMenuButton" id="menubutton">
         <property name="icon_name">canvasmenu-symbolic</property>
+        <property name="focus-on-click">false</property>
       </object>
     </child>
     <object class="GtkPopoverMenu" id="popovermenu">
