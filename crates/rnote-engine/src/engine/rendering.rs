@@ -234,6 +234,17 @@ impl Engine {
         // The ruler is drawn here instead of with the pens, because the pens are clamped to the
         // camera viewport, which in the bounded layouts is only as large as the document - the
         // ruler would be cut off outside the page.
+        //
+        // What it is drawn on covers the whole screen, and is painted and uploaded with every frame,
+        // so it is left out altogether while the ruler is hidden: while writing, a frame is drawn
+        // for every movement of the pen.
+        if self
+            .config
+            .read()
+            .pens_config
+            .brush_config
+            .ruler_config
+            .visible
         {
             let total_zoom = self.camera.total_zoom();
             let camera_offset = self.camera.offset();
