@@ -4,7 +4,7 @@ use super::PenStyle;
 use crate::engine::{EngineView, EngineViewMut};
 use crate::store::StrokeKey;
 use crate::strokes::Stroke;
-use crate::strokes::{AxisTicks, ShapeStroke};
+use crate::strokes::{AxisTicks, AxisTicksStyle, ShapeStroke};
 use crate::{DrawableOnDoc, WidgetFlags};
 use p2d::bounding_volume::Aabb;
 use p2d::math::Vector2;
@@ -36,6 +36,7 @@ enum ShaperState {
         keys: Vec<StrokeKey>,
         count: u32,
         constant_spacing: bool,
+        style: AxisTicksStyle,
         anchor: Aabb,
     },
 }
@@ -47,6 +48,8 @@ pub struct AxisTicksEdit {
     pub count: u32,
     /// Whether all half-axes have the same distance between markings.
     pub constant_spacing: bool,
+    /// What the markings look like.
+    pub style: AxisTicksStyle,
     /// The bounds of the coordinate system.
     pub anchor: Aabb,
 }
@@ -89,12 +92,13 @@ fn half_axis_lengths(store: &crate::store::StrokeStore, keys: &[StrokeKey]) -> V
         .collect()
 }
 
-/// Lay out the ticks of all half-axes of a coordinate system for the given count.
-fn apply_axis_ticks_count(
+/// Lay out and style the ticks of all half-axes of a coordinate system for the given count.
+fn apply_axis_ticks(
     store: &mut crate::store::StrokeStore,
     keys: &[StrokeKey],
     count: u32,
     constant_spacing: bool,
+    style: AxisTicksStyle,
 ) {
     let layouts = AxisTicks::layouts(&half_axis_lengths(store, keys), count, constant_spacing);
     for (&key, (axis_count, spacing_fraction)) in keys.iter().zip(layouts) {
@@ -102,6 +106,7 @@ fn apply_axis_ticks_count(
             && let Some(ticks) = &mut shapestroke.axis_ticks
         {
             ticks.set_layout(axis_count, spacing_fraction);
+            ticks.set_style(style);
         }
     }
     store.update_geometry_for_strokes(keys);
@@ -295,9 +300,8 @@ impl PenBehaviour for Shaper {
                         let axis_ticks = shaper_config.axis_ticks_enabled
                             && is_coord_system(builder_type)
                             && shapes.iter().all(|shape| matches!(shape, Shape::Line(_)));
-                        let (tick_size, tick_numbering, tick_spacing, constant_spacing) = (
-                            shaper_config.axis_tick_size,
-                            shaper_config.axis_tick_numbering,
+                        let (tick_style, tick_spacing, constant_spacing) = (
+                            shaper_config.axis_ticks_style(),
                             shaper_config.axis_tick_spacing,
                             shaper_config.axis_tick_constant_spacing,
                         );
@@ -325,12 +329,7 @@ impl PenBehaviour for Shaper {
                                     ShapeStroke::new_axis(
                                         shape,
                                         style.clone(),
-                                        AxisTicks::new(
-                                            tick_count,
-                                            tick_size,
-                                            tick_numbering,
-                                            negative,
-                                        ),
+                                        AxisTicks::new(tick_count, tick_style, negative),
                                     )
                                 }
                                 _ => ShapeStroke::new(shape, style.clone()),
@@ -348,11 +347,12 @@ impl PenBehaviour for Shaper {
                         }
 
                         if axis_ticks {
-                            apply_axis_ticks_count(
+                            apply_axis_ticks(
                                 engine_view.store,
                                 &keys,
                                 tick_count,
                                 constant_spacing,
+                                tick_style,
                             );
                             engine_view.store.regenerate_rendering_for_strokes(
                                 &keys,
@@ -377,6 +377,7 @@ impl PenBehaviour for Shaper {
                                     keys,
                                     count: tick_count,
                                     constant_spacing,
+                                    style: tick_style,
                                     anchor,
                                 };
                                 widget_flags.axis_ticks_popup = Some(true);
@@ -417,21 +418,28 @@ impl Shaper {
             ShaperState::EditAxisTicks {
                 count,
                 constant_spacing,
+                style,
                 anchor,
                 ..
             } => Some(AxisTicksEdit {
                 count: *count,
                 constant_spacing: *constant_spacing,
+                style: *style,
                 anchor: *anchor,
             }),
             _ => None,
         }
     }
 
-    /// Set the number of unit markings on every half-axis of the coordinate system being edited.
-    pub fn set_axis_ticks_count(
+    /// Change the unit markings of the coordinate system being edited.
+    ///
+    /// Everything but the count also becomes what the next coordinate system gets, as the shaper
+    /// settings show it.
+    pub fn update_axis_ticks(
         &mut self,
         new_count: u32,
+        new_constant_spacing: bool,
+        new_style: AxisTicksStyle,
         engine_view: &mut EngineViewMut,
     ) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
@@ -439,18 +447,33 @@ impl Shaper {
             keys,
             count,
             constant_spacing,
+            style,
             anchor,
         } = &mut self.state
         else {
             return widget_flags;
         };
         let new_count = new_count.clamp(AxisTicks::COUNT_MIN, AxisTicks::COUNT_MAX);
-        if new_count == *count {
+        if new_count == *count && new_constant_spacing == *constant_spacing && new_style == *style {
             return widget_flags;
         }
+        if new_constant_spacing != *constant_spacing || new_style != *style {
+            let shaper_config = &mut engine_view.config.pens_config.shaper_config;
+            shaper_config.axis_tick_constant_spacing = new_constant_spacing;
+            shaper_config.set_axis_ticks_style(new_style);
+            widget_flags.refresh_ui = true;
+        }
         *count = new_count;
+        *constant_spacing = new_constant_spacing;
+        *style = new_style;
 
-        apply_axis_ticks_count(engine_view.store, keys, new_count, *constant_spacing);
+        apply_axis_ticks(
+            engine_view.store,
+            keys,
+            new_count,
+            new_constant_spacing,
+            new_style,
+        );
         engine_view.store.regenerate_rendering_for_strokes(
             keys,
             engine_view.camera.viewport(),

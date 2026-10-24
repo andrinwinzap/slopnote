@@ -928,10 +928,21 @@ impl Engine {
         }
     }
 
-    /// Set the number of unit markings on every half-axis of the coordinate system being edited.
-    pub fn axis_ticks_set_count(&mut self, count: u32) -> WidgetFlags {
+    /// Change the unit markings of the coordinate system being edited: their number on every
+    /// half-axis, whether the axes keep the same spacing and what they look like.
+    pub fn axis_ticks_update(
+        &mut self,
+        count: u32,
+        constant_spacing: bool,
+        style: crate::strokes::AxisTicksStyle,
+    ) -> WidgetFlags {
         match self.penholder.current_pen_mut() {
-            Pen::Shaper(shaper) => shaper.set_axis_ticks_count(count, &mut engine_view_mut!(self)),
+            Pen::Shaper(shaper) => shaper.update_axis_ticks(
+                count,
+                constant_spacing,
+                style,
+                &mut engine_view_mut!(self),
+            ),
             _ => WidgetFlags::default(),
         }
     }

@@ -16,6 +16,7 @@ use rnote_compose::style::rough::roughoptions::FillStyle;
 use rnote_compose::style::smooth::{LineCap, LineStyle, SmoothOptions};
 use rnote_engine::pens::pensconfig::ShaperConfig;
 use rnote_engine::pens::pensconfig::shaperconfig::ShaperStyle;
+use rnote_engine::strokes::AxisTicks;
 
 mod imp {
     use super::*;
@@ -56,6 +57,10 @@ mod imp {
         pub(crate) axis_tick_size_row: TemplateChild<adw::SpinRow>,
         #[template_child]
         pub(crate) axis_tick_numbering_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(crate) axis_tick_label_every_row: TemplateChild<adw::SpinRow>,
+        #[template_child]
+        pub(crate) axis_tick_font_size_row: TemplateChild<adw::SpinRow>,
         #[template_child]
         pub(crate) axis_tick_constant_spacing_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
@@ -430,6 +435,44 @@ impl RnShaperPage {
                     .axis_tick_numbering = row.is_active();
             }
         ));
+        imp.axis_tick_numbering_row
+            .bind_property("active", &*imp.axis_tick_label_every_row, "sensitive")
+            .sync_create()
+            .build();
+        imp.axis_tick_numbering_row
+            .bind_property("active", &*imp.axis_tick_font_size_row, "sensitive")
+            .sync_create()
+            .build();
+        imp.axis_tick_label_every_row.set_range(
+            AxisTicks::LABEL_EVERY_MIN as f64,
+            AxisTicks::LABEL_EVERY_MAX as f64,
+        );
+        imp.axis_tick_label_every_row.connect_changed(clone!(
+            #[weak]
+            appwindow,
+            move |row| {
+                appwindow
+                    .engine_config()
+                    .write()
+                    .pens_config
+                    .shaper_config
+                    .axis_tick_label_every = row.value().round() as u32;
+            }
+        ));
+        imp.axis_tick_font_size_row
+            .set_range(AxisTicks::FONT_SIZE_MIN, AxisTicks::FONT_SIZE_MAX);
+        imp.axis_tick_font_size_row.connect_changed(clone!(
+            #[weak]
+            appwindow,
+            move |row| {
+                appwindow
+                    .engine_config()
+                    .write()
+                    .pens_config
+                    .shaper_config
+                    .axis_tick_font_size = row.value();
+            }
+        ));
         imp.axis_tick_constant_spacing_row
             .connect_active_notify(clone!(
                 #[weak]
@@ -731,6 +774,10 @@ impl RnShaperPage {
             .set_value(shaper_config.axis_tick_size);
         imp.axis_tick_numbering_row
             .set_active(shaper_config.axis_tick_numbering);
+        imp.axis_tick_label_every_row
+            .set_value(shaper_config.axis_tick_label_every as f64);
+        imp.axis_tick_font_size_row
+            .set_value(shaper_config.axis_tick_font_size);
         imp.axis_tick_constant_spacing_row
             .set_active(shaper_config.axis_tick_constant_spacing);
 

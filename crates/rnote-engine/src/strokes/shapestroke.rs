@@ -36,6 +36,9 @@ pub struct AxisTicks {
     /// The font size of the numbers.
     #[serde(rename = "font_size")]
     pub font_size: f64,
+    /// Only every this many ticks is numbered, counting from the origin.
+    #[serde(rename = "label_every")]
+    pub label_every: u32,
     /// The distance between two ticks, relative to the axis length.
     ///
     /// When `None`, the ticks are spread evenly with the last one at the tip.
@@ -57,11 +60,25 @@ impl Default for AxisTicks {
             numbering: true,
             negative: false,
             font_size: 12.0,
+            label_every: 1,
             spacing_fraction: None,
             erased_ticks: BTreeSet::new(),
             erased_labels: BTreeSet::new(),
         }
     }
+}
+
+/// What the unit markings of a coordinate system look like, the same on all of its axes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AxisTicksStyle {
+    /// The distance a tick reaches to each side of the axis.
+    pub tick_size: f64,
+    /// Whether the ticks are numbered.
+    pub numbering: bool,
+    /// Only every this many ticks is numbered.
+    pub label_every: u32,
+    /// The font size of the numbers.
+    pub font_size: f64,
 }
 
 /// The geometry of a single unit marking.
@@ -77,18 +94,43 @@ impl AxisTicks {
     /// The most ticks one axis can have, which can be more than [Self::COUNT_MAX] with constant
     /// spacing on axes of different length.
     const AXIS_COUNT_MAX: u32 = 1000;
+    pub const LABEL_EVERY_MIN: u32 = 1;
+    pub const LABEL_EVERY_MAX: u32 = 20;
+    pub const FONT_SIZE_MIN: f64 = 4.0;
+    pub const FONT_SIZE_MAX: f64 = 72.0;
     /// The gap between a tick and its number.
     const LABEL_GAP: f64 = 2.0;
 
-    pub fn new(count: u32, tick_size: f64, numbering: bool, negative: bool) -> Self {
-        Self {
+    pub fn new(count: u32, style: AxisTicksStyle, negative: bool) -> Self {
+        let mut ticks = Self {
             count: count.clamp(Self::COUNT_MIN, Self::COUNT_MAX),
-            tick_size,
-            numbering,
             negative,
-            font_size: (tick_size * 2.0).max(8.0),
             ..Default::default()
+        };
+        ticks.set_style(style);
+        ticks
+    }
+
+    /// The look of the markings.
+    pub fn style(&self) -> AxisTicksStyle {
+        AxisTicksStyle {
+            tick_size: self.tick_size,
+            numbering: self.numbering,
+            label_every: self.label_every,
+            font_size: self.font_size,
         }
+    }
+
+    /// Change the look of the markings.
+    pub fn set_style(&mut self, style: AxisTicksStyle) {
+        self.tick_size = style.tick_size;
+        self.numbering = style.numbering;
+        self.label_every = style
+            .label_every
+            .clamp(Self::LABEL_EVERY_MIN, Self::LABEL_EVERY_MAX);
+        self.font_size = style
+            .font_size
+            .clamp(Self::FONT_SIZE_MIN, Self::FONT_SIZE_MAX);
     }
 
     /// Set the number of ticks and their spacing relative to the axis length (`None` to spread
@@ -178,24 +220,26 @@ impl AxisTicks {
                     start: pos - normal * self.tick_size,
                     end: pos + normal * self.tick_size,
                 };
-                let label = (self.numbering && !self.erased_labels.contains(&index))
-                    .then(|| {
-                        let label = self.label_text(index);
-                        let layout =
-                            self.build_label_layout(&mut text, label.clone(), piet::Color::BLACK)?;
-                        let size = layout.size();
-                        let top_left = if horizontal {
-                            kurbo::Point::new(pos.x - size.width * 0.5, pos.y + reach)
-                        } else {
-                            kurbo::Point::new(pos.x - reach - size.width, pos.y - size.height * 0.5)
-                        };
-                        let rect = Aabb::new(
-                            Vector2::new(top_left.x, top_left.y),
-                            Vector2::new(top_left.x + size.width, top_left.y + size.height),
-                        );
-                        Some((label, top_left, rect))
-                    })
-                    .flatten();
+                let label = (self.numbering
+                    && index % self.label_every.max(1) == 0
+                    && !self.erased_labels.contains(&index))
+                .then(|| {
+                    let label = self.label_text(index);
+                    let layout =
+                        self.build_label_layout(&mut text, label.clone(), piet::Color::BLACK)?;
+                    let size = layout.size();
+                    let top_left = if horizontal {
+                        kurbo::Point::new(pos.x - size.width * 0.5, pos.y + reach)
+                    } else {
+                        kurbo::Point::new(pos.x - reach - size.width, pos.y - size.height * 0.5)
+                    };
+                    let rect = Aabb::new(
+                        Vector2::new(top_left.x, top_left.y),
+                        Vector2::new(top_left.x + size.width, top_left.y + size.height),
+                    );
+                    Some((label, top_left, rect))
+                })
+                .flatten();
                 TickPart { index, tick, label }
             })
             .collect()
@@ -443,5 +487,28 @@ mod tests {
         for ((_, fraction), length) in layouts.iter().zip([100.0, 250.0, 100.0]) {
             assert!((fraction.unwrap() * length - 25.0).abs() < 1e-9);
         }
+    }
+
+    #[test]
+    fn only_every_nth_tick_is_numbered() {
+        let style = AxisTicksStyle {
+            tick_size: 6.0,
+            numbering: true,
+            label_every: 2,
+            font_size: 12.0,
+        };
+        let ticks = AxisTicks::new(6, style, false);
+        let axis = Line {
+            start: Vector2::ZERO,
+            end: Vector2::new(300.0, 0.0),
+        };
+
+        let numbered = ticks
+            .parts(&axis)
+            .into_iter()
+            .filter(|part| part.label.is_some())
+            .map(|part| part.index)
+            .collect::<Vec<u32>>();
+        assert_eq!(numbered, vec![2, 4, 6]);
     }
 }

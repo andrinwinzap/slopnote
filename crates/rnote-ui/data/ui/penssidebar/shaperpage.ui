@@ -289,6 +289,37 @@
                     </object>
                   </child>
                   <child>
+                    <object class="AdwSpinRow" id="axis_tick_label_every_row">
+                      <property name="title" translatable="yes">Number Every</property>
+                      <property name="subtitle" translatable="yes">Number only every this many ticks</property>
+                      <property name="numeric">true</property>
+                      <property name="adjustment">
+                        <object class="GtkAdjustment">
+                          <property name="lower">1</property>
+                          <property name="upper">20</property>
+                          <property name="step-increment">1</property>
+                          <property name="page-increment">5</property>
+                          <property name="value">1</property>
+                        </object>
+                      </property>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="AdwSpinRow" id="axis_tick_font_size_row">
+                      <property name="title" translatable="yes">Number Size</property>
+                      <property name="numeric">true</property>
+                      <property name="adjustment">
+                        <object class="GtkAdjustment">
+                          <property name="lower">4</property>
+                          <property name="upper">72</property>
+                          <property name="step-increment">1</property>
+                          <property name="page-increment">4</property>
+                          <property name="value">12</property>
+                        </object>
+                      </property>
+                    </object>
+                  </child>
+                  <child>
                     <object class="AdwSwitchRow" id="axis_tick_constant_spacing_row">
                       <property name="title" translatable="yes">Constant Spacing</property>
                       <property name="subtitle" translatable="yes">On axes of different length, keep the distance between ticks the same instead of their number</property>

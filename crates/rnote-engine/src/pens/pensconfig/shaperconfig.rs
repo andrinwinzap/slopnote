@@ -1,4 +1,5 @@
 // Imports
+use crate::strokes::AxisTicksStyle;
 use rand::{RngExt, SeedableRng};
 use rnote_compose::Constraints;
 use rnote_compose::Style;
@@ -77,6 +78,15 @@ pub struct ShaperConfig {
     /// of markings, when they differ in length.
     #[serde(rename = "axis_tick_constant_spacing")]
     pub axis_tick_constant_spacing: bool,
+    /// Only every this many unit markings is numbered.
+    #[serde(rename = "axis_tick_label_every")]
+    pub axis_tick_label_every: u32,
+    /// The font size of the numbers of the unit markings.
+    #[serde(
+        rename = "axis_tick_font_size",
+        with = "rnote_compose::serialize::f64_dp3"
+    )]
+    pub axis_tick_font_size: f64,
 }
 
 impl Default for ShaperConfig {
@@ -100,6 +110,8 @@ impl Default for ShaperConfig {
             axis_tick_size: Self::AXIS_TICK_SIZE_DEFAULT,
             axis_tick_numbering: true,
             axis_tick_constant_spacing: false,
+            axis_tick_label_every: 1,
+            axis_tick_font_size: Self::AXIS_TICK_FONT_SIZE_DEFAULT,
         }
     }
 }
@@ -113,6 +125,25 @@ impl ShaperConfig {
     pub const AXIS_TICK_SIZE_MIN: f64 = 1.0;
     pub const AXIS_TICK_SIZE_MAX: f64 = 50.0;
     pub const AXIS_TICK_SIZE_DEFAULT: f64 = 6.0;
+    pub const AXIS_TICK_FONT_SIZE_DEFAULT: f64 = 12.0;
+
+    /// The look of the unit markings of new coordinate systems.
+    pub fn axis_ticks_style(&self) -> AxisTicksStyle {
+        AxisTicksStyle {
+            tick_size: self.axis_tick_size,
+            numbering: self.axis_tick_numbering,
+            label_every: self.axis_tick_label_every,
+            font_size: self.axis_tick_font_size,
+        }
+    }
+
+    /// Make the given look of unit markings the one new coordinate systems get.
+    pub fn set_axis_ticks_style(&mut self, style: AxisTicksStyle) {
+        self.axis_tick_size = style.tick_size;
+        self.axis_tick_numbering = style.numbering;
+        self.axis_tick_label_every = style.label_every;
+        self.axis_tick_font_size = style.font_size;
+    }
 
     /// The factor the stroke width is scaled with for the given mean pen pressure.
     ///
