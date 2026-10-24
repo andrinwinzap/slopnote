@@ -2,6 +2,7 @@
 use crate::penpath::PenPath;
 use p2d::math::Vector2;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// The minimum number of flattened input points needed to attempt a recognition.
 const MIN_INPUT_POINTS: usize = 12;
@@ -40,6 +41,12 @@ pub struct ScribbleRecognitionOptions {
     /// it covers.
     #[serde(rename = "min_length_diag_ratio")]
     pub min_length_diag_ratio: f64,
+    /// How many times per second the stroke has to turn back, on average over the whole stroke.
+    ///
+    /// A scratch-out is done quickly, while going slowly back and forth is more often marking
+    /// or shading something. `0.0` lets a scribble be as slow as it likes.
+    #[serde(rename = "min_turn_rate")]
+    pub min_turn_rate: f64,
 }
 
 impl Default for ScribbleRecognitionOptions {
@@ -50,6 +57,7 @@ impl Default for ScribbleRecognitionOptions {
             reversal_min_prominence_surface: 8.0,
             min_extent_surface: 30.0,
             min_length_diag_ratio: 2.0,
+            min_turn_rate: 3.0,
         }
     }
 }
@@ -75,13 +83,23 @@ impl ScribbleRecognitionOptions {
     pub const MIN_LENGTH_DIAG_RATIO_MIN: f64 = 1.0;
     /// The upper bound of `min_length_diag_ratio`.
     pub const MIN_LENGTH_DIAG_RATIO_MAX: f64 = 20.0;
+    /// The lower bound of `min_turn_rate`, which leaves out the speed.
+    pub const MIN_TURN_RATE_MIN: f64 = 0.0;
+    /// The upper bound of `min_turn_rate`.
+    pub const MIN_TURN_RATE_MAX: f64 = 20.0;
 }
 
 /// Whether the drawn pen path is a scribble, i.e. the gesture of scratching something out.
 ///
 /// `zoom` is the zoom of the view the path was drawn in, used for the thresholds that are defined
-/// in surface coordinates so they mean the same thing on screen at any zoom.
-pub fn is_scribble(path: &PenPath, zoom: f64, options: &ScribbleRecognitionOptions) -> bool {
+/// in surface coordinates so they mean the same thing on screen at any zoom. `duration` is how
+/// long the pen took to draw it.
+pub fn is_scribble(
+    path: &PenPath,
+    zoom: f64,
+    duration: Duration,
+    options: &ScribbleRecognitionOptions,
+) -> bool {
     let points = flattened_points(path);
     if points.len() < MIN_INPUT_POINTS {
         return false;
@@ -111,7 +129,13 @@ pub fn is_scribble(path: &PenPath, zoom: f64, options: &ScribbleRecognitionOptio
     let prominence = (options.reversal_prominence_ratio * span)
         .max(options.reversal_min_prominence_surface / zoom);
 
-    count_reversals(&projected, prominence) >= options.min_reversals as usize
+    let reversals = count_reversals(&projected, prominence);
+    if reversals < options.min_reversals as usize {
+        return false;
+    }
+
+    options.min_turn_rate <= 0.0
+        || reversals as f64 >= options.min_turn_rate * duration.as_secs_f64()
 }
 
 /// Extract the flattened points of the pen path.
@@ -225,6 +249,9 @@ mod tests {
     use super::*;
     use crate::penpath::Element;
 
+    /// How long a quick scratch-out takes.
+    const QUICK: Duration = Duration::from_millis(600);
+
     fn pen_path_from_points(points: impl IntoIterator<Item = Vector2>) -> PenPath {
         PenPath::try_from_elements(points.into_iter().map(|p| Element::new(p, 0.5))).unwrap()
     }
@@ -265,6 +292,7 @@ mod tests {
         assert!(is_scribble(
             &pen_path_from_points(points),
             1.0,
+            QUICK,
             &ScribbleRecognitionOptions::default()
         ));
     }
@@ -276,6 +304,7 @@ mod tests {
         assert!(!is_scribble(
             &pen_path_from_points(points),
             1.0,
+            QUICK,
             &ScribbleRecognitionOptions::default()
         ));
     }
@@ -295,6 +324,7 @@ mod tests {
         assert!(!is_scribble(
             &pen_path_from_points(points),
             1.0,
+            QUICK,
             &ScribbleRecognitionOptions::default()
         ));
     }
@@ -309,6 +339,7 @@ mod tests {
         assert!(!is_scribble(
             &pen_path_from_points(points),
             1.0,
+            QUICK,
             &ScribbleRecognitionOptions::default()
         ));
     }
@@ -321,6 +352,7 @@ mod tests {
         assert!(!is_scribble(
             &pen_path_from_points(points),
             1.0,
+            QUICK,
             &ScribbleRecognitionOptions::default()
         ));
     }
@@ -333,6 +365,7 @@ mod tests {
         assert!(is_scribble(
             &pen_path_from_points(points),
             4.0,
+            QUICK,
             &ScribbleRecognitionOptions::default()
         ));
     }
@@ -345,6 +378,7 @@ mod tests {
         assert!(!is_scribble(
             &pen_path_from_points(points),
             1.0,
+            QUICK,
             &ScribbleRecognitionOptions::default()
         ));
     }
@@ -383,6 +417,7 @@ mod tests {
         assert!(is_scribble(
             &pen_path_from_points(hasty_h_points()),
             1.0,
+            QUICK,
             &ScribbleRecognitionOptions::default()
         ));
     }
@@ -398,13 +433,37 @@ mod tests {
         assert!(!is_scribble(
             &pen_path_from_points(hasty_h_points()),
             1.0,
+            QUICK,
             &options
         ));
         // While a proper scratch-out is still recognized.
         assert!(is_scribble(
             &pen_path_from_points(scribble_points(6, 160.0, 40.0)),
             1.0,
+            QUICK,
             &options
         ));
+    }
+
+    #[test]
+    fn a_slow_back_and_forth_is_no_scribble() {
+        // The same gesture as a scratch-out, but drawn slowly, as when shading something in.
+        let points = scribble_points(6, 160.0, 40.0);
+        let path = pen_path_from_points(points);
+        let options = ScribbleRecognitionOptions::default();
+
+        assert!(is_scribble(&path, 1.0, QUICK, &options));
+        assert!(!is_scribble(&path, 1.0, Duration::from_secs(4), &options));
+    }
+
+    #[test]
+    fn no_turn_rate_lets_a_scribble_be_slow() {
+        let path = pen_path_from_points(scribble_points(6, 160.0, 40.0));
+        let options = ScribbleRecognitionOptions {
+            min_turn_rate: 0.0,
+            ..Default::default()
+        };
+
+        assert!(is_scribble(&path, 1.0, Duration::from_secs(60), &options));
     }
 }

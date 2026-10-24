@@ -40,6 +40,8 @@ enum BrushState {
         /// onto this edge for the duration of the stroke. `None` means the
         /// stroke started unsnapped and will never snap.
         ruler_snap_side: Option<f64>,
+        /// When the pen went down, to tell how quickly the stroke was drawn.
+        begin: Instant,
     },
     DraggingRuler {
         anchor_begin: Vector2,
@@ -226,6 +228,7 @@ impl PenBehaviour for Brush {
                         current_stroke_key,
                         preview_style,
                         ruler_snap_side,
+                        begin: now,
                     };
 
                     self.hold_anchor = element.pos;
@@ -345,7 +348,9 @@ impl PenBehaviour for Brush {
             },
             (
                 BrushState::Drawing {
-                    current_stroke_key, ..
+                    current_stroke_key,
+                    begin,
+                    ..
                 },
                 PenEvent::Cancel,
             ) => {
@@ -363,7 +368,11 @@ impl PenBehaviour for Brush {
                 engine_view
                     .store
                     .update_geometry_for_stroke(*current_stroke_key);
-                let (erased, wf) = erase_with_scribble(*current_stroke_key, engine_view);
+                let (erased, wf) = erase_with_scribble(
+                    *current_stroke_key,
+                    now.saturating_duration_since(*begin),
+                    engine_view,
+                );
                 widget_flags |= wf;
                 if !erased {
                     engine_view.store.regenerate_rendering_for_stroke_threaded(
@@ -394,6 +403,7 @@ impl PenBehaviour for Brush {
                     path_builder,
                     current_stroke_key,
                     ruler_snap_side,
+                    begin,
                     ..
                 },
                 mut pen_event,
@@ -524,7 +534,11 @@ impl PenBehaviour for Brush {
                         engine_view
                             .store
                             .update_geometry_for_stroke(*current_stroke_key);
-                        let (erased, wf) = erase_with_scribble(*current_stroke_key, engine_view);
+                        let (erased, wf) = erase_with_scribble(
+                            *current_stroke_key,
+                            now.saturating_duration_since(*begin),
+                            engine_view,
+                        );
                         widget_flags |= wf;
                         if !erased {
                             engine_view.store.regenerate_rendering_for_stroke_threaded(
@@ -872,6 +886,7 @@ fn reset_hold_task(
 /// Returns whether the stroke erased anything, in which case it is gone from the store.
 fn erase_with_scribble(
     stroke_key: StrokeKey,
+    duration: Duration,
     engine_view: &mut EngineViewMut,
 ) -> (bool, WidgetFlags) {
     let mut widget_flags = WidgetFlags::default();
@@ -888,6 +903,7 @@ fn erase_with_scribble(
         Some(Stroke::BrushStroke(brushstroke)) => scribblerecognition::is_scribble(
             &brushstroke.path,
             engine_view.camera.total_zoom(),
+            duration,
             &engine_view
                 .config
                 .pens_config

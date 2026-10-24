@@ -451,6 +451,23 @@
                         </object>
                       </child>
                       <child>
+                        <object class="AdwSpinRow" id="scribbleerase_min_turn_rate_row">
+                          <property name="title" translatable="yes">Minimum Speed (turns/s)</property>
+                          <property name="tooltip-text" translatable="yes">How many times per second the stroke has to turn back. Raise it if slowly going back and forth to mark or shade gets erased. 0 to ignore the speed</property>
+                          <property name="numeric">true</property>
+                          <property name="digits">1</property>
+                          <property name="adjustment">
+                            <object class="GtkAdjustment">
+                              <property name="lower">0</property>
+                              <property name="upper">20</property>
+                              <property name="step-increment">0.5</property>
+                              <property name="page-increment">2</property>
+                              <property name="value">3</property>
+                            </object>
+                          </property>
+                        </object>
+                      </child>
+                      <child>
                         <object class="AdwSpinRow" id="scribbleerase_pass_height_row">
                           <property name="title" translatable="yes">Turn Height (%)</property>
                           <property name="tooltip-text" translatable="yes">How far the stroke has to run back for a turn to count, relative to the scribble's size. Raise it if handwriting gets erased</property>

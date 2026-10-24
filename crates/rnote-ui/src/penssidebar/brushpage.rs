@@ -49,6 +49,8 @@ mod imp {
         #[template_child]
         pub(crate) scribbleerase_min_turns_row: TemplateChild<adw::SpinRow>,
         #[template_child]
+        pub(crate) scribbleerase_min_turn_rate_row: TemplateChild<adw::SpinRow>,
+        #[template_child]
         pub(crate) scribbleerase_pass_height_row: TemplateChild<adw::SpinRow>,
         #[template_child]
         pub(crate) scribbleerase_pass_length_row: TemplateChild<adw::SpinRow>,
@@ -490,6 +492,26 @@ impl RnBrushPage {
                 }
             ));
 
+        imp.scribbleerase_min_turn_rate_row.get().set_range(
+            ScribbleRecognitionOptions::MIN_TURN_RATE_MIN,
+            ScribbleRecognitionOptions::MIN_TURN_RATE_MAX,
+        );
+        imp.scribbleerase_min_turn_rate_row
+            .get()
+            .connect_changed(clone!(
+                #[weak]
+                appwindow,
+                move |row| {
+                    appwindow
+                        .engine_config()
+                        .write()
+                        .pens_config
+                        .brush_config
+                        .scribble_recognition_options
+                        .min_turn_rate = row.value();
+                }
+            ));
+
         // The ratio is shown in percent
         imp.scribbleerase_pass_height_row.get().set_range(
             ScribbleRecognitionOptions::REVERSAL_PROMINENCE_RATIO_MIN * 100.0,
@@ -799,6 +821,8 @@ impl RnBrushPage {
         let imp = self.imp();
         imp.scribbleerase_min_turns_row
             .set_value(options.min_reversals as f64);
+        imp.scribbleerase_min_turn_rate_row
+            .set_value(options.min_turn_rate);
         imp.scribbleerase_pass_height_row
             .set_value(options.reversal_prominence_ratio * 100.0);
         imp.scribbleerase_pass_length_row
