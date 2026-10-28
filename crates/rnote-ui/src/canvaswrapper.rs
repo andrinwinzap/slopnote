@@ -1141,8 +1141,6 @@ mod imp {
                             touch_points = gesture.sequences().len(),
                             "two-finger gesture cancelled"
                         );
-                        gesture.set_state(EventSequenceState::Denied);
-
                         // workaround for https://gitlab.gnome.org/GNOME/gtk/-/issues/187
                         canvaswrapper.imp().workaround_restore_kinetic_scrolling();
                         ruler_drag.set(None);

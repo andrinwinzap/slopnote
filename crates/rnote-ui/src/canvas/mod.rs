@@ -103,6 +103,7 @@ mod imp {
         pub(crate) show_drawing_cursor: Cell<bool>,
         pub(crate) hide_pen_cursor: Cell<bool>,
         pub(crate) hide_eraser_square: Cell<bool>,
+        pub(crate) text_input_enabled: Cell<bool>,
 
         pub(crate) last_export_dir: RefCell<Option<gio::File>>,
     }
@@ -205,6 +206,7 @@ mod imp {
                 show_drawing_cursor: Cell::new(false),
                 hide_pen_cursor: Cell::new(false),
                 hide_eraser_square: Cell::new(false),
+                text_input_enabled: Cell::new(false),
 
                 last_export_dir: RefCell::new(None),
             }
@@ -1019,15 +1021,37 @@ impl RnCanvas {
         }
     }
 
-    pub(crate) fn set_text_preprocessing(&self, enable: bool) {
-        if enable {
+    pub(crate) fn enable_text_input(&self, text_input: bool) {
+        if self.imp().text_input_enabled.get() == text_input {
+            return;
+        }
+
+        self.imp().text_input_enabled.set(text_input);
+
+        if text_input {
+            self.imp()
+                .key_controller_im_context
+                .set_client_widget(Some(self));
+
             self.imp()
                 .key_controller
                 .set_im_context(Some(&self.imp().key_controller_im_context));
+
+            // if the canvas already has focus, the key controller won't emit focus-in event, so emit it manually
+            if self.has_focus() {
+                self.imp().key_controller_im_context.focus_in();
+            }
         } else {
+            // flush any pending composition before detaching
+            self.imp().key_controller_im_context.reset();
+
             self.imp()
                 .key_controller
                 .set_im_context(None::<&IMMulticontext>);
+
+            self.imp()
+                .key_controller_im_context
+                .set_client_widget(None::<&Widget>);
         }
     }
 
