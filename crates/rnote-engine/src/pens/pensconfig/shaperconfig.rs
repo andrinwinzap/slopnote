@@ -1,4 +1,5 @@
 // Imports
+use crate::pens::shaper::CoordSystemSettings;
 use crate::strokes::AxisTicksStyle;
 use rand::{RngExt, SeedableRng};
 use rnote_compose::Constraints;
@@ -87,6 +88,20 @@ pub struct ShaperConfig {
         with = "rnote_compose::serialize::f64_dp3"
     )]
     pub axis_tick_font_size: f64,
+    /// Whether the positive half-axes of coordinate systems end in an arrow head.
+    #[serde(rename = "axis_arrows")]
+    pub axis_arrows: bool,
+    /// Whether the positive half-axes of coordinate systems are named at their tip.
+    #[serde(rename = "axis_labels")]
+    pub axis_labels: bool,
+    /// The names of the axes: the x, y and z axis. In 3D coordinate systems the x axis is the one
+    /// across the page, the y axis the horizontal and the z axis the vertical one.
+    #[serde(rename = "axis_label_names")]
+    pub axis_label_names: [String; 3],
+    /// Whether the third axis of 3D coordinate systems grows into the page, towards the upper
+    /// right, instead of out of it, towards the lower left.
+    #[serde(rename = "axis_third_into_page")]
+    pub axis_third_into_page: bool,
 }
 
 impl Default for ShaperConfig {
@@ -112,6 +127,10 @@ impl Default for ShaperConfig {
             axis_tick_constant_spacing: false,
             axis_tick_label_every: 1,
             axis_tick_font_size: Self::AXIS_TICK_FONT_SIZE_DEFAULT,
+            axis_arrows: true,
+            axis_labels: true,
+            axis_label_names: ["x".to_string(), "y".to_string(), "z".to_string()],
+            axis_third_into_page: false,
         }
     }
 }
@@ -143,6 +162,31 @@ impl ShaperConfig {
         self.axis_tick_numbering = style.numbering;
         self.axis_tick_label_every = style.label_every;
         self.axis_tick_font_size = style.font_size;
+    }
+
+    /// What a new coordinate system gets, with the given number of ticks on each half-axis.
+    pub fn coord_system_settings(&self, count: u32) -> CoordSystemSettings {
+        CoordSystemSettings {
+            ticks: self.axis_ticks_enabled,
+            count,
+            constant_spacing: self.axis_tick_constant_spacing,
+            tick_style: self.axis_ticks_style(),
+            arrows: self.axis_arrows,
+            labels: self.axis_labels,
+            label_names: self.axis_label_names.clone(),
+            third_into_page: self.axis_third_into_page,
+        }
+    }
+
+    /// Make the given settings, but for the number of ticks, the ones new coordinate systems get.
+    pub fn set_coord_system_settings(&mut self, settings: &CoordSystemSettings) {
+        self.axis_ticks_enabled = settings.ticks;
+        self.axis_tick_constant_spacing = settings.constant_spacing;
+        self.set_axis_ticks_style(settings.tick_style);
+        self.axis_arrows = settings.arrows;
+        self.axis_labels = settings.labels;
+        self.axis_label_names = settings.label_names.clone();
+        self.axis_third_into_page = settings.third_into_page;
     }
 
     /// The factor the stroke width is scaled with for the given mean pen pressure.

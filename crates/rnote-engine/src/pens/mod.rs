@@ -21,7 +21,7 @@ pub use penholder::PenHolder;
 pub use penmode::PenMode;
 pub use pensconfig::PensConfig;
 pub use selector::Selector;
-pub use shaper::{AxisTicksEdit, Shaper};
+pub use shaper::{CoordSystemEdit, CoordSystemSettings, Shaper};
 pub use shortcuts::Shortcuts;
 pub use tools::Tools;
 pub use typewriter::Typewriter;

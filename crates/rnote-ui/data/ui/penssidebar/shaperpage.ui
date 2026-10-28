@@ -306,7 +306,8 @@
                   </child>
                   <child>
                     <object class="AdwSpinRow" id="axis_tick_font_size_row">
-                      <property name="title" translatable="yes">Number Size</property>
+                      <property name="title" translatable="yes">Text Size</property>
+                      <property name="subtitle" translatable="yes">The numbers. The names of the axes are a little larger</property>
                       <property name="numeric">true</property>
                       <property name="adjustment">
                         <object class="GtkAdjustment">
@@ -323,6 +324,43 @@
                     <object class="AdwSwitchRow" id="axis_tick_constant_spacing_row">
                       <property name="title" translatable="yes">Constant Spacing</property>
                       <property name="subtitle" translatable="yes">On axes of different length, keep the distance between ticks the same instead of their number</property>
+                    </object>
+                  </child>
+                </object>
+              </child>
+              <child>
+                <object class="AdwExpanderRow" id="axis_ends_row">
+                  <property name="title" translatable="yes">Coordinate System Axes</property>
+                  <property name="subtitle" translatable="yes">Arrow heads and names at the ends of the axes</property>
+                  <child>
+                    <object class="AdwSwitchRow" id="axis_arrows_row">
+                      <property name="title" translatable="yes">Arrows</property>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="AdwSwitchRow" id="axis_labels_row">
+                      <property name="title" translatable="yes">Axis Names</property>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="AdwEntryRow" id="axis_label_x_row">
+                      <property name="title" translatable="yes">Name of the X Axis</property>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="AdwEntryRow" id="axis_label_y_row">
+                      <property name="title" translatable="yes">Name of the Y Axis</property>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="AdwEntryRow" id="axis_label_z_row">
+                      <property name="title" translatable="yes">Name of the Z Axis</property>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="AdwSwitchRow" id="axis_third_into_page_row">
+                      <property name="title" translatable="yes">Third Axis Into Page</property>
+                      <property name="subtitle" translatable="yes">In 3D coordinate systems, the axis across the page grows into it instead of coming out of it</property>
                     </object>
                   </child>
                 </object>

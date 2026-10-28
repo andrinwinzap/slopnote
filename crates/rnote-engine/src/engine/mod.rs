@@ -920,37 +920,32 @@ impl Engine {
             .handle_animation_frame(&mut engine_view_mut!(self));
     }
 
-    /// The coordinate system whose unit markings can currently be edited, if any.
-    pub fn axis_ticks_edit(&self) -> Option<crate::pens::AxisTicksEdit> {
+    /// The coordinate system that can currently be edited.
+    pub fn coord_system_edit(&self) -> Option<crate::pens::CoordSystemEdit> {
         match self.penholder.current_pen() {
-            Pen::Shaper(shaper) => shaper.axis_ticks_edit(),
+            Pen::Shaper(shaper) => shaper.coord_system_edit(),
             _ => None,
         }
     }
 
-    /// Change the unit markings of the coordinate system being edited: their number on every
-    /// half-axis, whether the axes keep the same spacing and what they look like.
-    pub fn axis_ticks_update(
+    /// Change how the coordinate system being edited is marked: its ticks, and the ends of its
+    /// axes.
+    pub fn coord_system_update(
         &mut self,
-        count: u32,
-        constant_spacing: bool,
-        style: crate::strokes::AxisTicksStyle,
+        settings: crate::pens::CoordSystemSettings,
     ) -> WidgetFlags {
         match self.penholder.current_pen_mut() {
-            Pen::Shaper(shaper) => shaper.update_axis_ticks(
-                count,
-                constant_spacing,
-                style,
-                &mut engine_view_mut!(self),
-            ),
+            Pen::Shaper(shaper) => {
+                shaper.update_coord_system(settings, &mut engine_view_mut!(self))
+            }
             _ => WidgetFlags::default(),
         }
     }
 
-    /// Finish editing the unit markings of the coordinate system.
-    pub fn axis_ticks_finish(&mut self) -> WidgetFlags {
+    /// Finish editing the coordinate system.
+    pub fn coord_system_finish(&mut self) -> WidgetFlags {
         match self.penholder.current_pen_mut() {
-            Pen::Shaper(shaper) => shaper.finish_axis_ticks_edit(&mut engine_view_mut!(self)),
+            Pen::Shaper(shaper) => shaper.finish_coord_system_edit(&mut engine_view_mut!(self)),
             _ => WidgetFlags::default(),
         }
     }

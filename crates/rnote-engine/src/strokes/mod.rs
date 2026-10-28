@@ -14,7 +14,7 @@ pub use brushstroke::BrushStroke;
 pub use content::Content;
 pub use resize::Resize;
 pub(crate) use shapestroke::AxisErase;
-pub use shapestroke::{AxisTicks, AxisTicksStyle, ShapeStroke};
+pub use shapestroke::{AxisEnd, AxisTicks, AxisTicksStyle, ShapeStroke};
 pub use stroke::Stroke;
 pub use textstroke::TextStroke;
 pub use vectorimage::VectorImage;

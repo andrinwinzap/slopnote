@@ -8,6 +8,7 @@ use piet::TextLayoutBuilder as _;
 use rnote_compose::Style;
 use rnote_compose::Transformable;
 use rnote_compose::ext::AabbExt;
+use rnote_compose::shapes::Arrow;
 use rnote_compose::shapes::Line;
 use rnote_compose::shapes::Shape;
 use rnote_compose::shapes::Shapeable;
@@ -291,6 +292,122 @@ impl AxisTicks {
     }
 }
 
+/// The end of a positive half-axis of a coordinate system: an arrow head at its tip, and the name
+/// of the axis just past it.
+///
+/// Like the ticks, it is derived from the line geometry, so it follows every transformation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename = "axis_end")]
+pub struct AxisEnd {
+    /// Whether the tip is an arrow head.
+    #[serde(rename = "arrow")]
+    pub arrow: bool,
+    /// The name of the axis. Nothing is drawn when it is empty.
+    #[serde(rename = "label")]
+    pub label: String,
+    /// The font size of the name.
+    #[serde(rename = "font_size")]
+    pub font_size: f64,
+}
+
+impl Default for AxisEnd {
+    fn default() -> Self {
+        Self {
+            arrow: true,
+            label: String::new(),
+            font_size: 15.0,
+        }
+    }
+}
+
+impl AxisEnd {
+    /// How much larger the name of an axis is than the numbers on it.
+    pub const LABEL_FONT_FACTOR: f64 = 1.25;
+    /// The gap between the tip of the axis and its name.
+    const LABEL_GAP: f64 = 4.0;
+
+    /// The two lines of the arrow head.
+    fn arrow_lines(&self, axis: &Line, stroke_width: f64) -> Option<[Line; 2]> {
+        if !self.arrow || (axis.end - axis.start).length() < 1e-6 {
+            return None;
+        }
+        let arrow = Arrow::new(axis.start, axis.end);
+        Some([
+            Line {
+                start: arrow.compute_lline(Some(stroke_width)),
+                end: axis.end,
+            },
+            Line {
+                start: axis.end,
+                end: arrow.compute_rline(Some(stroke_width)),
+            },
+        ])
+    }
+
+    fn build_label_layout<T: piet::Text>(
+        &self,
+        text: &mut T,
+        color: piet::Color,
+    ) -> Option<T::TextLayout> {
+        text.new_text_layout(self.label.clone())
+            .font(piet::FontFamily::SERIF, self.font_size)
+            .default_attribute(piet::TextAttribute::Style(piet::FontStyle::Italic))
+            .text_color(color)
+            .build()
+            .ok()
+    }
+
+    /// Where the name goes: just past the tip, in the direction the axis points.
+    fn label_rect(&self, axis: &Line, stroke_width: f64) -> Option<(kurbo::Point, Aabb)> {
+        let dir = axis.end - axis.start;
+        let len = dir.length();
+        if self.label.is_empty() || len < 1e-6 {
+            return None;
+        }
+        let unit = dir / len;
+        let layout =
+            self.build_label_layout(&mut piet_cairo::CairoText::new(), piet::Color::BLACK)?;
+        let size = layout.size();
+        let half = Vector2::new(size.width, size.height) * 0.5;
+        // Far enough along the axis that the box around the name clears the tip, whichever way
+        // the axis points.
+        let reach = half.x * unit.x.abs() + half.y * unit.y.abs() + Self::LABEL_GAP + stroke_width;
+        let center = axis.end + unit * reach;
+        let top_left = center - half;
+        Some((
+            kurbo::Point::new(top_left.x, top_left.y),
+            Aabb::new(top_left, center + half),
+        ))
+    }
+
+    fn draw(&self, cx: &mut impl piet::RenderContext, axis: &Line, style: &Style) {
+        let stroke_width = style.stroke_width();
+        if let Some(lines) = self.arrow_lines(axis, stroke_width) {
+            for line in lines {
+                line.draw_composed(cx, style);
+            }
+        }
+        if let (Some((top_left, _)), Some(color)) = (
+            self.label_rect(axis, stroke_width),
+            style.stroke_color().map(piet::Color::from),
+        ) && let Some(layout) = self.build_label_layout(cx.text(), color)
+        {
+            cx.draw_text(&layout, top_left);
+        }
+    }
+
+    /// The hitboxes of the arrow head and the name.
+    fn hitboxes(&self, axis: &Line, stroke_width: f64) -> Vec<Aabb> {
+        let arrow = self
+            .arrow_lines(axis, stroke_width)
+            .into_iter()
+            .flatten()
+            .map(|line| line.bounds().loosened(stroke_width * 0.5));
+        let label = self.label_rect(axis, stroke_width).map(|(_, rect)| rect);
+        arrow.chain(label).collect()
+    }
+}
+
 /// What erasing at a place did to a coordinate system axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AxisErase {
@@ -312,6 +429,9 @@ pub struct ShapeStroke {
     /// Unit markings, for shapes that are the half-axis of a coordinate system.
     #[serde(rename = "axis_ticks", skip_serializing_if = "Option::is_none")]
     pub axis_ticks: Option<AxisTicks>,
+    /// The arrow head and name, for shapes that are a positive half-axis of a coordinate system.
+    #[serde(rename = "axis_end", skip_serializing_if = "Option::is_none")]
+    pub axis_end: Option<AxisEnd>,
     #[serde(skip)]
     // since the shape can have many hitboxes, we store them and update them when the stroke geometry changes
     hitboxes: Vec<Aabb>,
@@ -358,6 +478,9 @@ impl Drawable for ShapeStroke {
         if let (Some(ticks), Shape::Line(axis)) = (&self.axis_ticks, &self.shape) {
             ticks.draw(cx, axis, &self.style);
         }
+        if let (Some(end), Shape::Line(axis)) = (&self.axis_end, &self.shape) {
+            end.draw(cx, axis, &self.style);
+        }
 
         cx.restore().map_err(|e| anyhow::anyhow!("{e:?}"))?;
         Ok(())
@@ -371,9 +494,16 @@ impl Shapeable for ShapeStroke {
             Style::Rough(options) => self.shape.composed_bounds(options),
             Style::Textured(_) => self.shape.bounds(),
         };
-        match &self.axis_ticks {
+        let bounds = match &self.axis_ticks {
             Some(ticks) => bounds.loosened(ticks.extent()),
             None => bounds,
+        };
+        match (&self.axis_end, &self.shape) {
+            (Some(end), Shape::Line(axis)) => end
+                .hitboxes(axis, self.style.stroke_width())
+                .iter()
+                .fold(bounds, |bounds, hitbox| bounds.merged(hitbox)),
+            _ => bounds,
         }
     }
 
@@ -403,6 +533,9 @@ impl Transformable for ShapeStroke {
             ticks.tick_size *= scale_scalar;
             ticks.font_size *= scale_scalar;
         }
+        if let Some(end) = &mut self.axis_end {
+            end.font_size *= scale_scalar;
+        }
     }
 }
 
@@ -412,17 +545,11 @@ impl ShapeStroke {
             shape,
             style,
             axis_ticks: None,
+            axis_end: None,
             hitboxes: vec![],
         };
         shapestroke.update_geometry();
 
-        shapestroke
-    }
-
-    /// A new shape stroke that is a half-axis carrying unit markings.
-    pub fn new_axis(shape: Shape, style: Style, axis_ticks: AxisTicks) -> Self {
-        let mut shapestroke = Self::new(shape, style);
-        shapestroke.axis_ticks = Some(axis_ticks);
         shapestroke
     }
 
@@ -441,6 +568,9 @@ impl ShapeStroke {
         let mut hitboxes = self.shape_hitboxes();
         if let (Some(ticks), Shape::Line(axis)) = (&self.axis_ticks, &self.shape) {
             hitboxes.extend(ticks.hitboxes(axis, self.style.stroke_width()));
+        }
+        if let (Some(end), Shape::Line(axis)) = (&self.axis_end, &self.shape) {
+            hitboxes.extend(end.hitboxes(axis, self.style.stroke_width()));
         }
         hitboxes
     }

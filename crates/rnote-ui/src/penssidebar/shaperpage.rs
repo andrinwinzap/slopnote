@@ -64,6 +64,18 @@ mod imp {
         #[template_child]
         pub(crate) axis_tick_constant_spacing_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub(crate) axis_arrows_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(crate) axis_labels_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(crate) axis_label_x_row: TemplateChild<adw::EntryRow>,
+        #[template_child]
+        pub(crate) axis_label_y_row: TemplateChild<adw::EntryRow>,
+        #[template_child]
+        pub(crate) axis_label_z_row: TemplateChild<adw::EntryRow>,
+        #[template_child]
+        pub(crate) axis_third_into_page_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub(crate) smoothstyle_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
         pub(crate) smoothstyle_line_cap_row: TemplateChild<adw::ComboRow>,
@@ -487,6 +499,69 @@ impl RnShaperPage {
                 }
             ));
 
+        // Ends of the coordinate system axes
+        imp.axis_arrows_row.connect_active_notify(clone!(
+            #[weak]
+            appwindow,
+            move |row| {
+                appwindow
+                    .engine_config()
+                    .write()
+                    .pens_config
+                    .shaper_config
+                    .axis_arrows = row.is_active();
+            }
+        ));
+        imp.axis_labels_row.connect_active_notify(clone!(
+            #[weak]
+            appwindow,
+            move |row| {
+                appwindow
+                    .engine_config()
+                    .write()
+                    .pens_config
+                    .shaper_config
+                    .axis_labels = row.is_active();
+            }
+        ));
+        for (index, row) in [
+            &*imp.axis_label_x_row,
+            &*imp.axis_label_y_row,
+            &*imp.axis_label_z_row,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            imp.axis_labels_row
+                .bind_property("active", row, "sensitive")
+                .sync_create()
+                .build();
+            row.connect_changed(clone!(
+                #[weak]
+                appwindow,
+                move |row| {
+                    appwindow
+                        .engine_config()
+                        .write()
+                        .pens_config
+                        .shaper_config
+                        .axis_label_names[index] = row.text().trim().to_string();
+                }
+            ));
+        }
+        imp.axis_third_into_page_row.connect_active_notify(clone!(
+            #[weak]
+            appwindow,
+            move |row| {
+                appwindow
+                    .engine_config()
+                    .write()
+                    .pens_config
+                    .shaper_config
+                    .axis_third_into_page = row.is_active();
+            }
+        ));
+
         // Smooth style
         // Line cap
         imp.smoothstyle_line_cap_row
@@ -780,6 +855,23 @@ impl RnShaperPage {
             .set_value(shaper_config.axis_tick_font_size);
         imp.axis_tick_constant_spacing_row
             .set_active(shaper_config.axis_tick_constant_spacing);
+        imp.axis_arrows_row.set_active(shaper_config.axis_arrows);
+        imp.axis_labels_row.set_active(shaper_config.axis_labels);
+        for (row, name) in [
+            &*imp.axis_label_x_row,
+            &*imp.axis_label_y_row,
+            &*imp.axis_label_z_row,
+        ]
+        .into_iter()
+        .zip(&shaper_config.axis_label_names)
+        {
+            // Setting the same text again would move the cursor while typing
+            if row.text() != *name {
+                row.set_text(name);
+            }
+        }
+        imp.axis_third_into_page_row
+            .set_active(shaper_config.axis_third_into_page);
 
         // Constraints
         imp.constraint_enabled_row
