@@ -6,9 +6,11 @@ use crate::pens::PenBehaviour;
 use crate::pens::pensconfig::selectorconfig::SelectorStyle;
 use crate::snap::SnapCorner;
 use crate::store::StrokeKey;
+use crate::strokes::{ShapeStroke, Stroke};
 use p2d::bounding_volume::Aabb;
 use p2d::math::Vector2;
 use p2d::query::PointQuery;
+use rnote_compose::Shape;
 use rnote_compose::eventresult::{EventPropagation, EventResult};
 use rnote_compose::ext::{AabbExt, Vector2Ext};
 use rnote_compose::penevent::{KeyboardKey, ModifierKey, PenProgress};
@@ -210,16 +212,19 @@ impl Selector {
                         current_pos,
                         snap_corner,
                     } => {
-                        let snap_corner_pos = match snap_corner {
-                            SnapCorner::TopLeft => selection_bounds.mins,
-                            SnapCorner::TopRight => {
-                                Vector2::new(selection_bounds.maxs[0], selection_bounds.mins[1])
-                            }
-                            SnapCorner::BottomLeft => {
-                                Vector2::new(selection_bounds.mins[0], selection_bounds.maxs[1])
-                            }
-                            SnapCorner::BottomRight => selection_bounds.maxs,
-                        };
+                        // A coordinate system snaps with its origin: the corners of its bounds
+                        // are wherever its ticks, numbers and arrow heads reach to.
+                        let snap_corner_pos = coord_system_origin(engine_view, selection)
+                            .unwrap_or(match snap_corner {
+                                SnapCorner::TopLeft => selection_bounds.mins,
+                                SnapCorner::TopRight => {
+                                    Vector2::new(selection_bounds.maxs[0], selection_bounds.mins[1])
+                                }
+                                SnapCorner::BottomLeft => {
+                                    Vector2::new(selection_bounds.mins[0], selection_bounds.maxs[1])
+                                }
+                                SnapCorner::BottomRight => selection_bounds.maxs,
+                            });
 
                         let offset = engine_view.document.snap_position(
                             snap_corner_pos + (element.pos - *current_pos),
@@ -777,4 +782,21 @@ impl Selector {
 
         (event_result, widget_flags)
     }
+}
+
+/// The origin of a coordinate system among the given strokes: the start of one of its axes.
+///
+/// The half-axes of a coordinate system all start at its origin, and are told apart from other
+/// lines by their ticks or by the arrow head or name at their end.
+fn coord_system_origin(engine_view: &EngineViewMut, keys: &[StrokeKey]) -> Option<Vector2> {
+    keys.iter()
+        .find_map(|&key| match engine_view.store.get_stroke_ref(key)? {
+            Stroke::ShapeStroke(ShapeStroke {
+                shape: Shape::Line(line),
+                axis_ticks,
+                axis_end,
+                ..
+            }) if axis_ticks.is_some() || axis_end.is_some() => Some(line.start),
+            _ => None,
+        })
 }
