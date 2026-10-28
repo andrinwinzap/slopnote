@@ -122,7 +122,7 @@ fn half_axis_lengths(store: &crate::store::StrokeStore, keys: &[StrokeKey]) -> V
 }
 
 /// The gap between the last tick of an axis and its arrow head.
-const ARROW_TICK_GAP: f64 = 4.0;
+const ARROW_TICK_GAP: f64 = 12.0;
 
 /// Mark the half-axes of a coordinate system as the settings say: their ticks, and the arrow
 /// head and name at the end of the positive ones.
