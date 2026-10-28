@@ -1,10 +1,9 @@
 // Imports
 use crate::{RnAppWindow, RnCanvas};
-use adw::prelude::*;
 use gettextrs::gettext;
 use gtk4::{
-    Align, Box, Button, Entry, Label, Orientation, Popover, PositionType, ScrolledWindow, Switch,
-    gdk, glib, glib::clone, graphene,
+    Align, Box, Button, Entry, Grid, Label, Orientation, Popover, PositionType, ScrolledWindow,
+    Separator, SpinButton, Switch, gdk, glib, glib::clone, graphene, prelude::*,
 };
 use rnote_engine::pens::CoordSystemSettings;
 use rnote_engine::pens::pensconfig::ShaperConfig;
@@ -56,177 +55,193 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         (bottom_right.x, bottom_right.y),
     );
 
-    let ticks_switch = Switch::builder()
-        .active(settings.ticks)
-        .valign(Align::Center)
-        .tooltip_text(gettext("Ticks on the axes"))
-        .build();
-    let count_row = spin_row(
-        &gettext("Number of Ticks"),
-        &if settings.constant_spacing {
-            gettext("On the shortest half-axis (+/−)")
-        } else {
-            gettext("On each half-axis (+/−)")
-        },
+    let ticks_switch = switch(settings.ticks, &gettext("Ticks on the axes"));
+    let count_spin = spin_button(
         AxisTicks::COUNT_MIN as f64,
         AxisTicks::COUNT_MAX as f64,
         settings.count as f64,
+        &if settings.constant_spacing {
+            gettext("Number of ticks on the shortest half-axis (+/−)")
+        } else {
+            gettext("Number of ticks on each half-axis (+/−)")
+        },
     );
-    let tick_size_row = spin_row(
-        &gettext("Tick Size"),
-        "",
+    let tick_size_spin = spin_button(
         ShaperConfig::AXIS_TICK_SIZE_MIN,
         ShaperConfig::AXIS_TICK_SIZE_MAX,
         settings.tick_style.tick_size,
+        &gettext("How far the ticks reach to each side of the axis"),
     );
-    let constant_spacing_row = switch_row(
-        &gettext("Same Spacing"),
-        &gettext("On axes of different length"),
+    let constant_spacing_switch = switch(
         settings.constant_spacing,
+        &gettext(
+            "On axes of different length, keep the distance between ticks the same instead of their number",
+        ),
     );
-    let numbering_row = switch_row(&gettext("Numbers"), "", settings.tick_style.numbering);
-    let label_every_row = spin_row(
-        &gettext("Number Every"),
-        &gettext("Ticks from one number to the next"),
+    let numbering_switch = switch(settings.tick_style.numbering, &gettext("Number the ticks"));
+    let label_every_spin = spin_button(
         AxisTicks::LABEL_EVERY_MIN as f64,
         AxisTicks::LABEL_EVERY_MAX as f64,
         settings.tick_style.label_every as f64,
+        &gettext("Number only every this many ticks"),
     );
-    let font_size_row = spin_row(
-        &gettext("Text Size"),
-        &gettext("The names are a little larger"),
+    let font_size_spin = spin_button(
         AxisTicks::FONT_SIZE_MIN,
         AxisTicks::FONT_SIZE_MAX,
         settings.tick_style.font_size,
+        &gettext("The size of the numbers. The names of the axes are a little larger"),
     );
-    let arrows_row = switch_row(&gettext("Arrows"), "", settings.arrows);
-    let arrow_size_row = spin_row(
-        &gettext("Arrow Size"),
-        "",
+    let arrows_switch = switch(
+        settings.arrows,
+        &gettext("Arrow heads at the ends of the axes"),
+    );
+    let arrow_size_spin = spin_button(
         AxisEnd::ARROW_SIZE_MIN,
         AxisEnd::ARROW_SIZE_MAX,
         settings.arrow_size,
+        &gettext("The size of the arrow heads"),
     );
-    let labels_row = switch_row(&gettext("Axis Names"), "", settings.labels);
+    let labels_switch = switch(settings.labels, &gettext("Names at the ends of the axes"));
     // The 3D coordinate system has a third axis to name
     let name_count = if edit.three_d { 3 } else { 2 };
     let name_entries = settings.label_names[..name_count]
         .iter()
-        .map(|name| {
+        .zip([
+            gettext("Name of x"),
+            gettext("Name of y"),
+            gettext("Name of z"),
+        ])
+        .map(|(name, tooltip)| {
             Entry::builder()
                 .text(name.as_str())
-                .width_chars(2)
-                .max_width_chars(3)
+                .width_chars(1)
+                .max_width_chars(2)
                 .xalign(0.5)
-                .valign(Align::Center)
+                .tooltip_text(tooltip)
                 .build()
         })
         .collect::<Vec<Entry>>();
     let names_box = Box::builder()
         .orientation(Orientation::Horizontal)
-        .spacing(6)
-        .valign(Align::Center)
+        .spacing(4)
+        .halign(Align::End)
         .build();
     for entry in &name_entries {
         names_box.append(entry);
     }
-    let names_row = adw::ActionRow::builder()
-        .title(gettext("Names"))
-        .subtitle(if edit.three_d {
-            gettext("Of x, y and z")
-        } else {
-            gettext("Of x and y")
-        })
-        .build();
-    names_row.add_suffix(&names_box);
-    let third_into_page_row = switch_row(
-        &gettext("Depth Axis Into Page"),
-        &gettext("Instead of out of it"),
+    let third_into_page_switch = switch(
         settings.third_into_page,
+        &gettext(
+            "Whether the depth axis across the page goes into it, towards the upper right, or comes out of it, towards the lower left",
+        ),
     );
-    let right_handed_row = switch_row(
-        &gettext("Right-Handed"),
-        &gettext("Decides whether x or y is the depth axis"),
+    let right_handed_switch = switch(
         settings.right_handed,
+        &gettext(
+            "Whether the coordinate system is right-handed or left-handed, which decides whether x or y is the depth axis",
+        ),
     );
 
-    // Two columns side by side, the ticks on the left and the ends of the axes on the right, so
-    // that the popup is not too tall to fit next to the coordinate system
-    let ticks_group = adw::PreferencesGroup::builder()
-        .title(gettext("Ticks"))
-        .header_suffix(&ticks_switch)
-        .valign(Align::Start)
-        .width_request(300)
+    // Two compact columns side by side, the ticks on the left and the axes on the right, so that
+    // the popup is small enough to fit next to the coordinate system
+    let grid = Grid::builder()
+        .row_spacing(4)
+        .column_spacing(12)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(10)
+        .margin_end(10)
         .build();
-    ticks_group.add(&count_row);
-    ticks_group.add(&tick_size_row);
-    ticks_group.add(&constant_spacing_row);
-    ticks_group.add(&numbering_row);
-    ticks_group.add(&label_every_row);
-    ticks_group.add(&font_size_row);
-
-    let axes_group = adw::PreferencesGroup::builder()
-        .title(gettext("Axes"))
-        .build();
-    axes_group.add(&arrows_row);
-    axes_group.add(&arrow_size_row);
-    axes_group.add(&labels_row);
-    axes_group.add(&names_row);
-    let axes_column = Box::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(18)
-        .valign(Align::Start)
-        .width_request(300)
-        .build();
-    axes_column.append(&axes_group);
-    if edit.three_d {
-        let three_d_group = adw::PreferencesGroup::builder()
-            .title(gettext("3D"))
+    let attach_row = |title: &str, control: &gtk4::Widget, column: i32, row: i32| {
+        let label = Label::builder()
+            .label(title)
+            .halign(Align::Start)
+            .valign(Align::Center)
             .build();
-        three_d_group.add(&third_into_page_row);
-        three_d_group.add(&right_handed_row);
-        axes_column.append(&three_d_group);
-    }
-    let columns = Box::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(18)
-        .build();
-    columns.append(&ticks_group);
-    columns.append(&axes_column);
+        grid.attach(&label, column, row, 1, 1);
+        grid.attach(control, column + 1, row, 1, 1);
+    };
+    let attach_heading = |title: &str, control: Option<&gtk4::Widget>, column: i32, row: i32| {
+        let label = Label::builder()
+            .label(title)
+            .halign(Align::Start)
+            .valign(Align::Center)
+            .css_classes(["heading"])
+            .build();
+        grid.attach(&label, column, row, 1, 1);
+        if let Some(control) = control {
+            grid.attach(control, column + 1, row, 1, 1);
+        }
+    };
 
-    let title = Label::builder()
-        .label(gettext("Coordinate System"))
-        .halign(Align::Start)
-        .hexpand(true)
-        .css_classes(["title-4"])
-        .build();
+    attach_heading(&gettext("Ticks"), Some(ticks_switch.upcast_ref()), 0, 0);
+    let ticks_rows: [(String, &gtk4::Widget); 6] = [
+        (gettext("Count"), count_spin.upcast_ref()),
+        (gettext("Size"), tick_size_spin.upcast_ref()),
+        (
+            gettext("Same spacing"),
+            constant_spacing_switch.upcast_ref(),
+        ),
+        (gettext("Numbers"), numbering_switch.upcast_ref()),
+        (gettext("Number every"), label_every_spin.upcast_ref()),
+        (gettext("Text size"), font_size_spin.upcast_ref()),
+    ];
+    for (row, (title, control)) in ticks_rows.iter().enumerate() {
+        attach_row(title, control, 0, row as i32 + 1);
+    }
+
+    attach_heading(&gettext("Axes"), None, 3, 0);
+    let axes_rows: [(String, &gtk4::Widget); 4] = [
+        (gettext("Arrows"), arrows_switch.upcast_ref()),
+        (gettext("Arrow size"), arrow_size_spin.upcast_ref()),
+        (gettext("Names"), labels_switch.upcast_ref()),
+        (String::new(), names_box.upcast_ref()),
+    ];
+    for (row, (title, control)) in axes_rows.iter().enumerate() {
+        attach_row(title, control, 3, row as i32 + 1);
+    }
+    let mut rows = ticks_rows.len() as i32 + 1;
+    if edit.three_d {
+        let first = axes_rows.len() as i32 + 1;
+        attach_heading(&gettext("3D"), None, 3, first);
+        attach_row(
+            &gettext("Into page"),
+            third_into_page_switch.upcast_ref(),
+            3,
+            first + 1,
+        );
+        attach_row(
+            &gettext("Right-handed"),
+            right_handed_switch.upcast_ref(),
+            3,
+            first + 2,
+        );
+        rows = rows.max(first + 3);
+    }
+    grid.attach(
+        &Separator::builder()
+            .orientation(Orientation::Vertical)
+            .margin_start(4)
+            .margin_end(4)
+            .build(),
+        2,
+        0,
+        1,
+        rows,
+    );
+
     let done_button = Button::builder()
         .label(gettext("Done"))
         .tooltip_text(gettext("Close (Enter)"))
-        .valign(Align::Center)
-        .css_classes(["suggested-action", "pill"])
+        .halign(Align::End)
+        .margin_top(4)
+        .css_classes(["suggested-action"])
         .build();
-    let header = Box::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(12)
-        .build();
-    header.append(&title);
-    header.append(&done_button);
-
-    let content = Box::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(18)
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    content.append(&header);
-    content.append(&columns);
+    grid.attach(&done_button, 0, rows, 5, 1);
 
     let popover = Popover::builder()
         .name(POPOVER_NAME)
-        .child(&content)
+        .child(&grid)
         .position(position)
         .pointing_to(&rect)
         .has_arrow(true)
@@ -237,18 +252,18 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
     // Every control applies all of them, so the coordinate system always shows what they say
     let controls = Rc::new(Controls {
         ticks: ticks_switch.downgrade(),
-        count: count_row.downgrade(),
-        tick_size: tick_size_row.downgrade(),
-        constant_spacing: constant_spacing_row.downgrade(),
-        numbering: numbering_row.downgrade(),
-        label_every: label_every_row.downgrade(),
-        font_size: font_size_row.downgrade(),
-        arrows: arrows_row.downgrade(),
-        arrow_size: arrow_size_row.downgrade(),
-        labels: labels_row.downgrade(),
+        count: count_spin.downgrade(),
+        tick_size: tick_size_spin.downgrade(),
+        constant_spacing: constant_spacing_switch.downgrade(),
+        numbering: numbering_switch.downgrade(),
+        label_every: label_every_spin.downgrade(),
+        font_size: font_size_spin.downgrade(),
+        arrows: arrows_switch.downgrade(),
+        arrow_size: arrow_size_spin.downgrade(),
+        labels: labels_switch.downgrade(),
         names: name_entries.iter().map(|entry| entry.downgrade()).collect(),
-        third_into_page: third_into_page_row.downgrade(),
-        right_handed: right_handed_row.downgrade(),
+        third_into_page: third_into_page_switch.downgrade(),
+        right_handed: right_handed_switch.downgrade(),
         // Names that have no entry stay as they were
         default_names: settings.label_names.clone(),
     });
@@ -269,33 +284,29 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
             appwindow.handle_widget_flags(widget_flags, &canvas);
         }
     ));
-    for row in [
-        &count_row,
-        &tick_size_row,
-        &label_every_row,
-        &font_size_row,
-        &arrow_size_row,
+    for spin in [
+        &count_spin,
+        &tick_size_spin,
+        &label_every_spin,
+        &font_size_spin,
+        &arrow_size_spin,
     ] {
-        row.connect_value_notify(clone!(
+        spin.connect_value_changed(clone!(
             #[strong]
             apply,
             move |_| apply()
         ));
     }
-    ticks_switch.connect_active_notify(clone!(
-        #[strong]
-        apply,
-        move |_| apply()
-    ));
-    for row in [
-        &constant_spacing_row,
-        &numbering_row,
-        &arrows_row,
-        &labels_row,
-        &third_into_page_row,
-        &right_handed_row,
+    for switch in [
+        &ticks_switch,
+        &constant_spacing_switch,
+        &numbering_switch,
+        &arrows_switch,
+        &labels_switch,
+        &third_into_page_switch,
+        &right_handed_switch,
     ] {
-        row.connect_active_notify(clone!(
+        switch.connect_active_notify(clone!(
             #[strong]
             apply,
             move |_| apply()
@@ -325,7 +336,7 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         .collect::<Vec<_>>();
     key_controller.connect_key_pressed(clone!(
         #[weak]
-        count_row,
+        count_spin,
         #[weak]
         popover,
         #[upgrade_or]
@@ -337,11 +348,11 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
                 .any(|entry| entry.state_flags().contains(gtk4::StateFlags::FOCUS_WITHIN));
             match key {
                 gdk::Key::plus | gdk::Key::KP_Add | gdk::Key::equal if !typing_name => {
-                    count_row.set_value(count_row.value() + 1.0);
+                    count_spin.set_value(count_spin.value() + 1.0);
                     glib::Propagation::Stop
                 }
                 gdk::Key::minus | gdk::Key::KP_Subtract | gdk::Key::underscore if !typing_name => {
-                    count_row.set_value(count_row.value() - 1.0);
+                    count_spin.set_value(count_spin.value() - 1.0);
                     glib::Propagation::Stop
                 }
                 gdk::Key::Return | gdk::Key::KP_Enter => {
@@ -369,24 +380,24 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
     ));
 
     popover.popup();
-    count_row.grab_focus();
+    count_spin.grab_focus();
 }
 
 /// The controls of the popup, held weakly so the handlers connected to them do not keep them alive.
 struct Controls {
     ticks: glib::WeakRef<Switch>,
-    count: glib::WeakRef<adw::SpinRow>,
-    tick_size: glib::WeakRef<adw::SpinRow>,
-    constant_spacing: glib::WeakRef<adw::SwitchRow>,
-    numbering: glib::WeakRef<adw::SwitchRow>,
-    label_every: glib::WeakRef<adw::SpinRow>,
-    font_size: glib::WeakRef<adw::SpinRow>,
-    arrows: glib::WeakRef<adw::SwitchRow>,
-    arrow_size: glib::WeakRef<adw::SpinRow>,
-    labels: glib::WeakRef<adw::SwitchRow>,
+    count: glib::WeakRef<SpinButton>,
+    tick_size: glib::WeakRef<SpinButton>,
+    constant_spacing: glib::WeakRef<Switch>,
+    numbering: glib::WeakRef<Switch>,
+    label_every: glib::WeakRef<SpinButton>,
+    font_size: glib::WeakRef<SpinButton>,
+    arrows: glib::WeakRef<Switch>,
+    arrow_size: glib::WeakRef<SpinButton>,
+    labels: glib::WeakRef<Switch>,
     names: Vec<glib::WeakRef<Entry>>,
-    third_into_page: glib::WeakRef<adw::SwitchRow>,
-    right_handed: glib::WeakRef<adw::SwitchRow>,
+    third_into_page: glib::WeakRef<Switch>,
+    right_handed: glib::WeakRef<Switch>,
     default_names: [String; 3],
 }
 
@@ -499,22 +510,24 @@ fn popover_anchor(
     (rect, position)
 }
 
-/// A row with a switch.
-fn switch_row(title: &str, subtitle: &str, active: bool) -> adw::SwitchRow {
-    adw::SwitchRow::builder()
-        .title(title)
-        .subtitle(subtitle)
+/// A switch for the popup, explained by its tooltip.
+fn switch(active: bool, tooltip: &str) -> Switch {
+    Switch::builder()
         .active(active)
+        .halign(Align::End)
+        .valign(Align::Center)
+        .tooltip_text(tooltip)
         .build()
 }
 
-/// A row with a spin button for a whole number in the given range.
-fn spin_row(title: &str, subtitle: &str, min: f64, max: f64, value: f64) -> adw::SpinRow {
-    let row = adw::SpinRow::with_range(min, max, 1.0);
-    row.set_title(title);
-    row.set_subtitle(subtitle);
-    row.set_digits(0);
-    row.set_numeric(true);
-    row.set_value(value);
-    row
+/// A spin button for a whole number in the given range, explained by its tooltip.
+fn spin_button(min: f64, max: f64, value: f64, tooltip: &str) -> SpinButton {
+    let spin = SpinButton::with_range(min, max, 1.0);
+    spin.set_digits(0);
+    spin.set_numeric(true);
+    spin.set_value(value);
+    spin.set_halign(Align::End);
+    spin.set_valign(Align::Center);
+    spin.set_tooltip_text(Some(tooltip));
+    spin
 }
