@@ -35,7 +35,7 @@ pub(crate) fn hide_axis_ticks_popover(canvas: &RnCanvas) {
 /// Show a popup next to the coordinate system that was just drawn, to set how it is marked: the
 /// number of ticks on each half-axis (also with plus and minus on the keyboard), their size,
 /// spacing and numbers, the arrow heads and names at the ends of the axes, and for 3D coordinate
-/// systems the direction of the depth axis and the handedness.
+/// systems whether the third axis goes into the page or comes out of it.
 pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas) {
     let Some(edit) = canvas.engine_ref().coord_system_edit() else {
         return;
@@ -55,189 +55,140 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         (bottom_right.x, bottom_right.y),
     );
 
-    let ticks_switch = switch(settings.ticks, &gettext("Ticks on the axes"));
+    let ticks_switch = switch(settings.ticks);
     let count_spin = spin_button(
         AxisTicks::COUNT_MIN as f64,
         AxisTicks::COUNT_MAX as f64,
         settings.count as f64,
-        &if settings.constant_spacing {
-            gettext("Number of ticks on the shortest half-axis (+/−)")
-        } else {
-            gettext("Number of ticks on each half-axis (+/−)")
-        },
     );
+    count_spin.set_tooltip_text(Some(&if settings.constant_spacing {
+        gettext("Number of ticks on the shortest half-axis (+/-)")
+    } else {
+        gettext("Number of ticks on each half-axis (+/-)")
+    }));
     let tick_size_spin = spin_button(
         ShaperConfig::AXIS_TICK_SIZE_MIN,
         ShaperConfig::AXIS_TICK_SIZE_MAX,
         settings.tick_style.tick_size,
-        &gettext("How far the ticks reach to each side of the axis"),
     );
-    let constant_spacing_switch = switch(
-        settings.constant_spacing,
-        &gettext(
-            "On axes of different length, keep the distance between ticks the same instead of their number",
-        ),
-    );
-    let numbering_switch = switch(settings.tick_style.numbering, &gettext("Number the ticks"));
+    let constant_spacing_switch = switch(settings.constant_spacing);
+    constant_spacing_switch.set_tooltip_text(Some(&gettext(
+        "On axes of different length, keep the distance between ticks the same instead of their number",
+    )));
+    let numbering_switch = switch(settings.tick_style.numbering);
     let label_every_spin = spin_button(
         AxisTicks::LABEL_EVERY_MIN as f64,
         AxisTicks::LABEL_EVERY_MAX as f64,
         settings.tick_style.label_every as f64,
-        &gettext("Number only every this many ticks"),
     );
+    label_every_spin.set_tooltip_text(Some(&gettext("Number only every this many ticks")));
     let font_size_spin = spin_button(
         AxisTicks::FONT_SIZE_MIN,
         AxisTicks::FONT_SIZE_MAX,
         settings.tick_style.font_size,
-        &gettext("The size of the numbers. The names of the axes are a little larger"),
     );
-    let arrows_switch = switch(
-        settings.arrows,
-        &gettext("Arrow heads at the ends of the axes"),
-    );
+    font_size_spin.set_tooltip_text(Some(&gettext(
+        "The size of the numbers. The names of the axes are a little larger",
+    )));
+    let arrows_switch = switch(settings.arrows);
     let arrow_size_spin = spin_button(
         AxisEnd::ARROW_SIZE_MIN,
         AxisEnd::ARROW_SIZE_MAX,
         settings.arrow_size,
-        &gettext("The size of the arrow heads"),
     );
-    let labels_switch = switch(settings.labels, &gettext("Names at the ends of the axes"));
+    let labels_switch = switch(settings.labels);
     // The 3D coordinate system has a third axis to name
     let name_count = if edit.three_d { 3 } else { 2 };
     let name_entries = settings.label_names[..name_count]
         .iter()
-        .zip([
-            gettext("Name of x"),
-            gettext("Name of y"),
-            gettext("Name of z"),
-        ])
-        .map(|(name, tooltip)| {
+        .map(|name| {
             Entry::builder()
                 .text(name.as_str())
-                .width_chars(1)
-                .max_width_chars(2)
+                .width_chars(3)
+                .max_width_chars(3)
                 .xalign(0.5)
-                .tooltip_text(tooltip)
                 .build()
         })
         .collect::<Vec<Entry>>();
     let names_box = Box::builder()
         .orientation(Orientation::Horizontal)
-        .spacing(4)
+        .spacing(6)
         .halign(Align::End)
         .build();
     for entry in &name_entries {
         names_box.append(entry);
     }
-    let third_into_page_switch = switch(
-        settings.third_into_page,
-        &gettext(
-            "Whether the depth axis across the page goes into it, towards the upper right, or comes out of it, towards the lower left",
-        ),
-    );
-    let right_handed_switch = switch(
-        settings.right_handed,
-        &gettext(
-            "Whether the coordinate system is right-handed or left-handed, which decides whether x or y is the depth axis",
-        ),
-    );
+    let third_into_page_switch = switch(settings.third_into_page);
+    third_into_page_switch.set_tooltip_text(Some(&gettext(
+        "Whether the depth axis across the page goes into it, towards the upper right, or comes out of it, towards the lower left",
+    )));
+    let right_handed_switch = switch(settings.right_handed);
+    right_handed_switch.set_tooltip_text(Some(&gettext(
+        "Whether the coordinate system is right-handed or left-handed, which decides whether x or y is the depth axis",
+    )));
 
-    // Two compact columns side by side, the ticks on the left and the axes on the right, so that
-    // the popup is small enough to fit next to the coordinate system
     let grid = Grid::builder()
-        .row_spacing(4)
-        .column_spacing(12)
-        .margin_top(8)
-        .margin_bottom(8)
-        .margin_start(10)
-        .margin_end(10)
+        .row_spacing(6)
+        .column_spacing(18)
+        .margin_top(6)
+        .margin_bottom(6)
+        .margin_start(6)
+        .margin_end(6)
         .build();
-    let attach_row = |title: &str, control: &gtk4::Widget, column: i32, row: i32| {
-        let label = Label::builder()
-            .label(title)
-            .halign(Align::Start)
-            .valign(Align::Center)
-            .build();
-        grid.attach(&label, column, row, 1, 1);
-        grid.attach(control, column + 1, row, 1, 1);
-    };
-    let attach_heading = |title: &str, control: Option<&gtk4::Widget>, column: i32, row: i32| {
-        let label = Label::builder()
-            .label(title)
-            .halign(Align::Start)
-            .valign(Align::Center)
-            .css_classes(["heading"])
-            .build();
-        grid.attach(&label, column, row, 1, 1);
-        if let Some(control) = control {
-            grid.attach(control, column + 1, row, 1, 1);
-        }
-    };
-
-    attach_heading(&gettext("Ticks"), Some(ticks_switch.upcast_ref()), 0, 0);
-    let ticks_rows: [(String, &gtk4::Widget); 6] = [
-        (gettext("Count"), count_spin.upcast_ref()),
-        (gettext("Size"), tick_size_spin.upcast_ref()),
+    // Two columns side by side, the ticks on the left and the rest on the right, so that the popup
+    // is not too tall to fit next to the coordinate system
+    let ticks_column: Vec<(String, gtk4::Widget)> = vec![
+        (gettext("Ticks"), ticks_switch.clone().upcast()),
+        (gettext("Number of Ticks"), count_spin.clone().upcast()),
+        (gettext("Tick Size"), tick_size_spin.clone().upcast()),
         (
-            gettext("Same spacing"),
-            constant_spacing_switch.upcast_ref(),
+            gettext("Same Spacing"),
+            constant_spacing_switch.clone().upcast(),
         ),
-        (gettext("Numbers"), numbering_switch.upcast_ref()),
-        (gettext("Number every"), label_every_spin.upcast_ref()),
-        (gettext("Text size"), font_size_spin.upcast_ref()),
+        (gettext("Numbers"), numbering_switch.clone().upcast()),
+        (gettext("Number Every"), label_every_spin.clone().upcast()),
     ];
-    for (row, (title, control)) in ticks_rows.iter().enumerate() {
-        attach_row(title, control, 0, row as i32 + 1);
-    }
-
-    attach_heading(&gettext("Axes"), None, 3, 0);
-    let axes_rows: [(String, &gtk4::Widget); 4] = [
-        (gettext("Arrows"), arrows_switch.upcast_ref()),
-        (gettext("Arrow size"), arrow_size_spin.upcast_ref()),
-        (gettext("Names"), labels_switch.upcast_ref()),
-        (String::new(), names_box.upcast_ref()),
+    let mut ends_column: Vec<(String, gtk4::Widget)> = vec![
+        (gettext("Text Size"), font_size_spin.clone().upcast()),
+        (gettext("Arrows"), arrows_switch.clone().upcast()),
+        (gettext("Arrow Size"), arrow_size_spin.clone().upcast()),
+        (gettext("Axis Names"), labels_switch.clone().upcast()),
+        (gettext("Names"), names_box.clone().upcast()),
     ];
-    for (row, (title, control)) in axes_rows.iter().enumerate() {
-        attach_row(title, control, 3, row as i32 + 1);
-    }
-    let mut rows = ticks_rows.len() as i32 + 1;
     if edit.three_d {
-        let first = axes_rows.len() as i32 + 1;
-        attach_heading(&gettext("3D"), None, 3, first);
-        attach_row(
-            &gettext("Into page"),
-            third_into_page_switch.upcast_ref(),
-            3,
-            first + 1,
-        );
-        attach_row(
-            &gettext("Right-handed"),
-            right_handed_switch.upcast_ref(),
-            3,
-            first + 2,
-        );
-        rows = rows.max(first + 3);
+        ends_column.push((
+            gettext("Depth Axis Into Page"),
+            third_into_page_switch.clone().upcast(),
+        ));
+        ends_column.push((
+            gettext("Right-Handed"),
+            right_handed_switch.clone().upcast(),
+        ));
     }
-    grid.attach(
-        &Separator::builder()
-            .orientation(Orientation::Vertical)
-            .margin_start(4)
-            .margin_end(4)
-            .build(),
-        2,
-        0,
-        1,
-        rows,
-    );
+    let mut rows = 0;
+    for (column, entries) in [(0, &ticks_column), (3, &ends_column)] {
+        for (row, (title, control)) in entries.iter().enumerate() {
+            let label = Label::builder()
+                .label(title.as_str())
+                .halign(Align::Start)
+                .valign(Align::Center)
+                .build();
+            grid.attach(&label, column, row as i32, 1, 1);
+            grid.attach(control, column + 1, row as i32, 1, 1);
+        }
+        rows = rows.max(entries.len() as i32);
+    }
+    grid.attach(&Separator::new(Orientation::Vertical), 2, 0, 1, rows);
+    let row = rows;
 
     let done_button = Button::builder()
         .label(gettext("Done"))
         .tooltip_text(gettext("Close (Enter)"))
         .halign(Align::End)
-        .margin_top(4)
+        .margin_top(6)
         .css_classes(["suggested-action"])
         .build();
-    grid.attach(&done_button, 0, rows, 5, 1);
+    grid.attach(&done_button, 0, row, 5, 1);
 
     let popover = Popover::builder()
         .name(POPOVER_NAME)
@@ -435,28 +386,24 @@ impl Controls {
         };
         let ticks = settings.ticks;
         let numbers = ticks && settings.tick_style.numbering;
-        let rows: [(Option<gtk4::Widget>, bool); 7] = [
-            (self.count.upgrade().map(|row| row.upcast()), ticks),
-            (self.tick_size.upgrade().map(|row| row.upcast()), ticks),
-            (
-                self.constant_spacing.upgrade().map(|row| row.upcast()),
-                ticks,
-            ),
-            (self.numbering.upgrade().map(|row| row.upcast()), ticks),
-            (self.label_every.upgrade().map(|row| row.upcast()), numbers),
-            (
-                self.font_size.upgrade().map(|row| row.upcast()),
-                numbers || settings.labels,
-            ),
-            (
-                self.arrow_size.upgrade().map(|row| row.upcast()),
-                settings.arrows,
-            ),
-        ];
-        for (row, sensitive) in rows {
-            if let Some(row) = row {
-                row.set_sensitive(sensitive);
+        for spin in [&self.count, &self.tick_size] {
+            if let Some(spin) = spin.upgrade() {
+                spin.set_sensitive(ticks);
             }
+        }
+        for switch in [&self.constant_spacing, &self.numbering] {
+            if let Some(switch) = switch.upgrade() {
+                switch.set_sensitive(ticks);
+            }
+        }
+        if let Some(spin) = self.label_every.upgrade() {
+            spin.set_sensitive(numbers);
+        }
+        if let Some(spin) = self.font_size.upgrade() {
+            spin.set_sensitive(numbers || settings.labels);
+        }
+        if let Some(spin) = self.arrow_size.upgrade() {
+            spin.set_sensitive(settings.arrows);
         }
         for entry in self.names.iter().filter_map(|entry| entry.upgrade()) {
             entry.set_sensitive(settings.labels);
@@ -510,24 +457,22 @@ fn popover_anchor(
     (rect, position)
 }
 
-/// A switch for the popup, explained by its tooltip.
-fn switch(active: bool, tooltip: &str) -> Switch {
+/// A switch for a row of the popup.
+fn switch(active: bool) -> Switch {
     Switch::builder()
         .active(active)
         .halign(Align::End)
         .valign(Align::Center)
-        .tooltip_text(tooltip)
         .build()
 }
 
-/// A spin button for a whole number in the given range, explained by its tooltip.
-fn spin_button(min: f64, max: f64, value: f64, tooltip: &str) -> SpinButton {
+/// A spin button for a whole number in the given range.
+fn spin_button(min: f64, max: f64, value: f64) -> SpinButton {
     let spin = SpinButton::with_range(min, max, 1.0);
     spin.set_digits(0);
     spin.set_numeric(true);
     spin.set_value(value);
     spin.set_halign(Align::End);
     spin.set_valign(Align::Center);
-    spin.set_tooltip_text(Some(tooltip));
     spin
 }
