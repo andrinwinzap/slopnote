@@ -45,6 +45,9 @@ pub(crate) fn handle_pointer_controller_event(
     // GTK can deliver mouse motion events while a stylus is hovering or drawing.
     // They must not reuse the stylus state, otherwise the pen position jumps to
     // the last mouse position and generates an unwanted pen event.
+    if !is_stylus && !stylus_active && gdk_event_type == gdk::EventType::MotionNotify {
+        canvas.imp().last_mouse_position.set(event.position());
+    }
     if is_stylus {
         stylus_active = gdk_event_type != gdk::EventType::ProximityOut;
         canvas.imp().last_pen_position.set(event.position());
@@ -366,12 +369,29 @@ fn event_is_stylus(event: &gdk::Event) -> bool {
 /// How far from where the pen last was mouse motion has to be to be the mouse moving, in pixels.
 const MOUSE_AWAY_FROM_PEN_DISTANCE: f64 = 8.0;
 
-/// Whether a mouse event is somewhere other than where the pen last was.
+/// How far the mouse has to move from where it last was to count as moving, in pixels.
+const MOUSE_MOVED_DISTANCE: f64 = 2.0;
+
+/// Whether a mouse event is the mouse moving, somewhere other than where the pen last was.
+///
+/// While the pen is in use, GTK also repeats where the mouse was left, many times a second,
+/// without it having moved, and sends motion where the pen is: neither is the mouse.
 fn mouse_moved_away_from_pen(canvas: &RnCanvas, event: &gdk::Event) -> bool {
-    let (Some(pen), Some(mouse)) = (canvas.imp().last_pen_position.get(), event.position()) else {
-        return true;
+    let Some(mouse) = event.position() else {
+        return false;
     };
-    Vector2::new(mouse.0 - pen.0, mouse.1 - pen.1).length() > MOUSE_AWAY_FROM_PEN_DISTANCE
+    let distance = |a: (f64, f64), b: (f64, f64)| Vector2::new(a.0 - b.0, a.1 - b.1).length();
+    let moved = canvas
+        .imp()
+        .last_mouse_position
+        .replace(Some(mouse))
+        .is_some_and(|last| distance(mouse, last) > MOUSE_MOVED_DISTANCE);
+    let away_from_pen = canvas
+        .imp()
+        .last_pen_position
+        .get()
+        .is_none_or(|pen| distance(mouse, pen) > MOUSE_AWAY_FROM_PEN_DISTANCE);
+    moved && away_from_pen
 }
 
 fn retrieve_pointer_elements(

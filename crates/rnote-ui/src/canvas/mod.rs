@@ -84,6 +84,8 @@ mod imp {
         pub(crate) pen_in_use: Cell<bool>,
         /// Where the pen last was, to tell the mouse moving from the motion GTK sends for the pen.
         pub(crate) last_pen_position: Cell<Option<(f64, f64)>>,
+        /// Where the mouse last was, to tell it moving from GTK repeating where it is.
+        pub(crate) last_mouse_position: Cell<Option<(f64, f64)>>,
         /// Shows the cursor again a moment after the pen has gone, unless it is back by then.
         pub(crate) pen_gone_timeout: RefCell<Option<glib::SourceId>>,
 
@@ -187,6 +189,7 @@ mod imp {
                 drawing_cursor_enabled: Cell::new(false),
                 pen_in_use: Cell::new(false),
                 last_pen_position: Cell::new(None),
+                last_mouse_position: Cell::new(None),
                 pen_gone_timeout: RefCell::new(None),
 
                 engine: RefCell::new(engine),
