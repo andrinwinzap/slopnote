@@ -2,44 +2,49 @@
 use crate::{RnAppWindow, RnCanvas};
 use gettextrs::gettext;
 use gtk4::{
-    Align, Box, Button, Entry, Grid, Label, Orientation, Popover, PositionType, Separator,
-    SpinButton, Switch, gdk, glib, glib::clone, prelude::*,
+    Align, Box, Button, Entry, Grid, Label, Orientation, Overlay, Separator, SpinButton, Switch,
+    gdk, glib, glib::clone, graphene, prelude::*,
 };
 use rnote_engine::pens::CoordSystemSettings;
 use rnote_engine::pens::pensconfig::ShaperConfig;
 use rnote_engine::strokes::{AxisTicks, AxisTicksStyle};
 use std::rc::Rc;
 
-const POPOVER_NAME: &str = "axis-ticks-popover";
+const CARD_NAME: &str = "coord-system-card";
+/// The space kept between the card and the coordinate system or the edges of the window.
+const CARD_MARGIN: i32 = 8;
 
-fn find_popover(canvas: &RnCanvas) -> Option<Popover> {
-    let mut child = canvas.first_child();
+fn find_card(overlay: &Overlay) -> Option<gtk4::Widget> {
+    let mut child = overlay.first_child();
     while let Some(widget) = child {
-        if widget.widget_name() == POPOVER_NAME
-            && let Ok(popover) = widget.clone().downcast::<Popover>()
-        {
-            return Some(popover);
+        if widget.widget_name() == CARD_NAME {
+            return Some(widget);
         }
         child = widget.next_sibling();
     }
     None
 }
 
-/// Hide the popup for the coordinate system.
-pub(crate) fn hide_axis_ticks_popover(canvas: &RnCanvas) {
-    if let Some(popover) = find_popover(canvas) {
-        popover.popdown();
+/// Hide the card for the coordinate system.
+pub(crate) fn hide_axis_ticks_popover(appwindow: &RnAppWindow) {
+    let overlay = appwindow.overlays().toolbar_overlay();
+    if let Some(card) = find_card(&overlay) {
+        overlay.remove_overlay(&card);
     }
 }
 
-/// Show a popup next to the coordinate system that was just drawn, to set how it is marked: the
+/// Show a card next to the coordinate system that was just drawn, to set how it is marked: the
 /// number of ticks on each half-axis (also with plus and minus on the keyboard), their size,
 /// spacing and numbers, the arrow heads and names at the ends of the axes, and for 3D coordinate
 /// systems whether the third axis goes into the page or comes out of it.
+///
+/// It is a card over the canvas rather than a popover: a popover closes on any press next to it,
+/// a palm resting on the screen included, and one that does not cannot take the keyboard.
 pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas) {
     let Some(edit) = canvas.engine_ref().coord_system_edit() else {
         return;
     };
+    hide_axis_ticks_popover(appwindow);
     let settings = &edit.settings;
 
     // The anchor is in document coordinates
@@ -122,10 +127,10 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
     let grid = Grid::builder()
         .row_spacing(6)
         .column_spacing(18)
-        .margin_top(6)
-        .margin_bottom(6)
-        .margin_start(6)
-        .margin_end(6)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
         .build();
     let mut sections: Vec<Vec<(String, gtk4::Widget)>> = vec![
         vec![
@@ -179,15 +184,17 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         .build();
     grid.attach(&done_button, 0, row, 2, 1);
 
-    let popover = Popover::builder()
-        .name(POPOVER_NAME)
-        .child(&grid)
-        .position(PositionType::Bottom)
-        .pointing_to(&rect)
-        .has_arrow(true)
-        .autohide(true)
+    let card = Box::builder()
+        .name(CARD_NAME)
+        .orientation(Orientation::Vertical)
+        .halign(Align::Start)
+        .valign(Align::Start)
+        .css_classes(["card"])
         .build();
-    popover.set_parent(canvas);
+    card.append(&grid);
+    let overlay = appwindow.overlays().toolbar_overlay();
+    overlay.add_overlay(&card);
+    place_card(&card, &overlay, canvas, &rect);
 
     // Every control applies all of them, so the coordinate system always shows what they say
     let controls = Rc::new(Controls {
@@ -256,10 +263,22 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         ));
     }
 
-    done_button.connect_clicked(clone!(
+    // Closing the card finishes editing the coordinate system
+    let close = Rc::new(clone!(
         #[weak]
-        popover,
-        move |_| popover.popdown()
+        appwindow,
+        #[weak]
+        canvas,
+        move || {
+            hide_axis_ticks_popover(&appwindow);
+            let widget_flags = canvas.engine_mut().coord_system_finish();
+            appwindow.handle_widget_flags(widget_flags, &canvas);
+        }
+    ));
+    done_button.connect_clicked(clone!(
+        #[strong]
+        close,
+        move |_| close()
     ));
 
     // Keyboard: plus and minus change the count, enter confirms. Not while typing the name of an
@@ -273,8 +292,8 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
     key_controller.connect_key_pressed(clone!(
         #[weak]
         count_spin,
-        #[weak]
-        popover,
+        #[strong]
+        close,
         #[upgrade_or]
         glib::Propagation::Proceed,
         move |_, key, _, _| {
@@ -291,32 +310,44 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
                     count_spin.set_value(count_spin.value() - 1.0);
                     glib::Propagation::Stop
                 }
-                gdk::Key::Return | gdk::Key::KP_Enter => {
-                    popover.popdown();
+                gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::Escape => {
+                    close();
                     glib::Propagation::Stop
                 }
                 _ => glib::Propagation::Proceed,
             }
         }
     ));
-    popover.add_controller(key_controller);
+    card.add_controller(key_controller);
 
-    popover.connect_closed(clone!(
-        #[weak]
-        appwindow,
-        #[weak]
-        canvas,
-        move |popover| {
-            let widget_flags = canvas.engine_mut().coord_system_finish();
-            appwindow.handle_widget_flags(widget_flags, &canvas);
-            // Unparenting inside the signal handler can crash GTK, so defer it
-            let popover = popover.clone();
-            glib::idle_add_local_once(move || popover.unparent());
-        }
-    ));
-
-    popover.popup();
     count_spin.grab_focus();
+}
+
+/// Put the card below the coordinate system, or above it when there is no room below, and inside
+/// the window. `rect` is the coordinate system in canvas coordinates.
+fn place_card(card: &Box, overlay: &Overlay, canvas: &RnCanvas, rect: &gdk::Rectangle) {
+    let corner = |x: i32, y: i32| {
+        canvas
+            .compute_point(overlay, &graphene::Point::new(x as f32, y as f32))
+            .map(|point| (point.x() as i32, point.y() as i32))
+            .unwrap_or((x, y))
+    };
+    let (left, top) = corner(rect.x(), rect.y());
+    let (right, bottom) = corner(rect.x() + rect.width(), rect.y() + rect.height());
+    let (_, width, _, _) = card.measure(Orientation::Horizontal, -1);
+    let (_, height, _, _) = card.measure(Orientation::Vertical, width);
+    let (overlay_width, overlay_height) = (overlay.width(), overlay.height());
+
+    let x = ((left + right) / 2 - width / 2)
+        .min(overlay_width - width - CARD_MARGIN)
+        .max(CARD_MARGIN);
+    let y = if bottom + CARD_MARGIN + height <= overlay_height - CARD_MARGIN {
+        bottom + CARD_MARGIN
+    } else {
+        (top - CARD_MARGIN - height).max(CARD_MARGIN)
+    };
+    card.set_margin_start(x);
+    card.set_margin_top(y);
 }
 
 /// The controls of the popup, held weakly so the handlers connected to them do not keep them alive.

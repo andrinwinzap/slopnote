@@ -38,6 +38,9 @@ enum ShaperState {
         builder_type: ShapeBuilderType,
         settings: CoordSystemSettings,
         anchor: Aabb,
+        /// Where the pen went down on the canvas meanwhile, while it has not moved far enough
+        /// to be drawing.
+        press: Option<Element>,
     },
 }
 
@@ -119,15 +122,12 @@ fn half_axis_lengths(store: &crate::store::StrokeStore, keys: &[StrokeKey]) -> V
         .collect()
 }
 
+/// How far the pen has to move on the canvas, in surface pixels, to be drawing rather than tapping
+/// while a coordinate system is being edited.
+const DRAWING_DISTANCE: f64 = 8.0;
+
 /// The gap between the last tick of an axis and its arrow head.
 const ARROW_TICK_GAP: f64 = 4.0;
-
-/// How far back from the tip the arrow head of an axis drawn with the given stroke width reaches.
-fn arrow_head_length(stroke_width: f64) -> f64 {
-    let tip = Vector2::new(1000.0, 0.0);
-    let arrow = rnote_compose::shapes::Arrow::new(Vector2::ZERO, tip);
-    tip.x - arrow.compute_lline(Some(stroke_width)).x
-}
 
 /// Mark the half-axes of a coordinate system as the settings say: their ticks, and the arrow
 /// head and name at the end of the positive ones.
@@ -140,6 +140,7 @@ fn apply_coord_system(
     // With arrows the ticks stop short of the arrow heads, on every half-axis alike, so that the
     // last one does not sit on the arrow and the spacing stays the same on all of them.
     let lengths = half_axis_lengths(store, keys);
+    let arrow_size = settings.tick_style.tick_size * AxisEnd::ARROW_SIZE_FACTOR;
     let margin = if settings.arrows {
         let stroke_width = keys
             .first()
@@ -148,7 +149,7 @@ fn apply_coord_system(
                 _ => None,
             })
             .unwrap_or(1.0);
-        arrow_head_length(stroke_width) + ARROW_TICK_GAP
+        AxisEnd::arrow_reach(arrow_size + stroke_width) + ARROW_TICK_GAP
     } else {
         0.0
     };
@@ -196,6 +197,7 @@ fn apply_coord_system(
         shapestroke.axis_end =
             (!negative && (settings.arrows || settings.labels)).then(|| AxisEnd {
                 arrow: settings.arrows,
+                arrow_size,
                 label: if settings.labels {
                     settings.label_names[name].clone()
                 } else {
@@ -258,11 +260,54 @@ impl PenBehaviour for Shaper {
     ) -> (EventResult<PenProgress>, WidgetFlags) {
         let mut widget_flags = WidgetFlags::default();
 
-        // A new pen press ends the editing of the last coordinate system.
-        if matches!(self.state, ShaperState::EditCoordSystem { .. })
-            && matches!(event, PenEvent::Down { .. })
-        {
-            widget_flags |= self.finish_coord_system_edit(engine_view);
+        // Tapping the canvas leaves the coordinate system and its popup be, so that missing the
+        // popup does not close it. Drawing ends the editing, and the new shape begins where the
+        // pen went down.
+        if let ShaperState::EditCoordSystem { press, .. } = &mut self.state {
+            match &event {
+                PenEvent::Down {
+                    element,
+                    modifier_keys,
+                } => {
+                    let start = *press.get_or_insert(*element);
+                    let drawing = (element.pos - start.pos).length()
+                        * engine_view.camera.total_zoom()
+                        > DRAWING_DISTANCE;
+                    if !drawing {
+                        return (
+                            EventResult {
+                                handled: true,
+                                propagate: EventPropagation::Stop,
+                                progress: PenProgress::Idle,
+                            },
+                            widget_flags,
+                        );
+                    }
+                    let modifier_keys = modifier_keys.clone();
+                    widget_flags |= self.finish_coord_system_edit(engine_view);
+                    let (_, wf) = self.handle_event(
+                        PenEvent::Down {
+                            element: start,
+                            modifier_keys,
+                        },
+                        now,
+                        engine_view,
+                    );
+                    widget_flags |= wf;
+                }
+                PenEvent::Up { .. } | PenEvent::Cancel => {
+                    *press = None;
+                    return (
+                        EventResult {
+                            handled: true,
+                            propagate: EventPropagation::Stop,
+                            progress: PenProgress::Idle,
+                        },
+                        widget_flags,
+                    );
+                }
+                _ => {}
+            }
         }
 
         let event_result = match (&mut self.state, event) {
@@ -454,6 +499,7 @@ impl PenBehaviour for Shaper {
                                     builder_type,
                                     settings,
                                     anchor,
+                                    press: None,
                                 };
                                 widget_flags.axis_ticks_popup = Some(true);
                             }
@@ -519,6 +565,7 @@ impl Shaper {
             builder_type,
             settings,
             anchor,
+            ..
         } = &mut self.state
         else {
             return widget_flags;

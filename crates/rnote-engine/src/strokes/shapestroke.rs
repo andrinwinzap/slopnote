@@ -8,7 +8,6 @@ use piet::TextLayoutBuilder as _;
 use rnote_compose::Style;
 use rnote_compose::Transformable;
 use rnote_compose::ext::AabbExt;
-use rnote_compose::shapes::Arrow;
 use rnote_compose::shapes::Line;
 use rnote_compose::shapes::Shape;
 use rnote_compose::shapes::Shapeable;
@@ -302,6 +301,9 @@ pub struct AxisEnd {
     /// Whether the tip is an arrow head.
     #[serde(rename = "arrow")]
     pub arrow: bool,
+    /// The length of the sides of the arrow head.
+    #[serde(rename = "arrow_size")]
+    pub arrow_size: f64,
     /// The name of the axis. Nothing is drawn when it is empty.
     #[serde(rename = "label")]
     pub label: String,
@@ -314,6 +316,7 @@ impl Default for AxisEnd {
     fn default() -> Self {
         Self {
             arrow: true,
+            arrow_size: 7.5,
             label: String::new(),
             font_size: 15.0,
         }
@@ -323,23 +326,39 @@ impl Default for AxisEnd {
 impl AxisEnd {
     /// How much larger the name of an axis is than the numbers on it.
     pub const LABEL_FONT_FACTOR: f64 = 1.25;
+    /// How much longer the sides of the arrow head are than the ticks reach to each side.
+    pub const ARROW_SIZE_FACTOR: f64 = 1.25;
+    /// The angle between the sides of the arrow head and the axis.
+    const ARROW_ANGLE: f64 = std::f64::consts::PI / 6.0;
+
+    /// How far back from the tip of the axis an arrow head of the given size reaches.
+    pub fn arrow_reach(arrow_size: f64) -> f64 {
+        arrow_size * Self::ARROW_ANGLE.cos()
+    }
     /// The gap between the tip of the axis and its name.
     const LABEL_GAP: f64 = 4.0;
 
     /// The two lines of the arrow head.
     fn arrow_lines(&self, axis: &Line, stroke_width: f64) -> Option<[Line; 2]> {
-        if !self.arrow || (axis.end - axis.start).length() < 1e-6 {
+        let dir = axis.end - axis.start;
+        let len = dir.length();
+        if !self.arrow || len < 1e-6 {
             return None;
         }
-        let arrow = Arrow::new(axis.start, axis.end);
+        let unit = dir / len;
+        let normal = Vector2::new(-unit.y, unit.x);
+        // The sides grow a little with the stroke, so a thick axis still has a visible head
+        let size = self.arrow_size + stroke_width;
+        let back = axis.end - unit * size * Self::ARROW_ANGLE.cos();
+        let side = normal * size * Self::ARROW_ANGLE.sin();
         Some([
             Line {
-                start: arrow.compute_lline(Some(stroke_width)),
+                start: back + side,
                 end: axis.end,
             },
             Line {
                 start: axis.end,
-                end: arrow.compute_rline(Some(stroke_width)),
+                end: back - side,
             },
         ])
     }
@@ -534,6 +553,7 @@ impl Transformable for ShapeStroke {
             ticks.font_size *= scale_scalar;
         }
         if let Some(end) = &mut self.axis_end {
+            end.arrow_size *= scale_scalar;
             end.font_size *= scale_scalar;
         }
     }

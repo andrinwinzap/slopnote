@@ -387,7 +387,7 @@ impl RnAppWindow {
         }
         match widget_flags.axis_ticks_popup {
             Some(true) => crate::axisticks::show_axis_ticks_popover(self, canvas),
-            Some(false) => crate::axisticks::hide_axis_ticks_popover(canvas),
+            Some(false) => crate::axisticks::hide_axis_ticks_popover(self),
             None => {}
         }
     }
