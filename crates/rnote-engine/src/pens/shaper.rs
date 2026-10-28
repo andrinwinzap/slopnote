@@ -54,6 +54,8 @@ pub struct CoordSystemSettings {
     pub tick_style: AxisTicksStyle,
     /// Whether the positive half-axes end in an arrow head.
     pub arrows: bool,
+    /// The length of the sides of the arrow heads.
+    pub arrow_size: f64,
     /// Whether the positive half-axes are named at their tip.
     pub labels: bool,
     /// The names of the x, y and z axis.
@@ -133,7 +135,7 @@ fn apply_coord_system(
     // With arrows the ticks stop short of the arrow heads, on every half-axis alike, so that the
     // last one does not sit on the arrow and the spacing stays the same on all of them.
     let lengths = half_axis_lengths(store, keys);
-    let arrow_size = settings.tick_style.tick_size * AxisEnd::ARROW_SIZE_FACTOR;
+    let arrow_size = settings.arrow_size;
     let margin = if settings.arrows {
         let stroke_width = keys
             .first()
@@ -142,7 +144,7 @@ fn apply_coord_system(
                 _ => None,
             })
             .unwrap_or(1.0);
-        AxisEnd::arrow_reach(arrow_size + stroke_width) + ARROW_TICK_GAP
+        AxisEnd::arrow_reach(arrow_size, stroke_width) + ARROW_TICK_GAP
     } else {
         0.0
     };

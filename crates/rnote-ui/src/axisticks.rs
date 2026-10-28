@@ -2,12 +2,12 @@
 use crate::{RnAppWindow, RnCanvas};
 use gettextrs::gettext;
 use gtk4::{
-    Align, Box, Button, Entry, Grid, Label, Orientation, Popover, PositionType, Separator,
-    SpinButton, Switch, gdk, glib, glib::clone, prelude::*,
+    Align, Box, Button, Entry, Grid, Label, Orientation, Popover, PositionType, ScrolledWindow,
+    Separator, SpinButton, Switch, gdk, glib, glib::clone, graphene, prelude::*,
 };
 use rnote_engine::pens::CoordSystemSettings;
 use rnote_engine::pens::pensconfig::ShaperConfig;
-use rnote_engine::strokes::{AxisTicks, AxisTicksStyle};
+use rnote_engine::strokes::{AxisEnd, AxisTicks, AxisTicksStyle};
 use std::rc::Rc;
 
 const POPOVER_NAME: &str = "axis-ticks-popover";
@@ -49,11 +49,10 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         transform.transform_point2(mins),
         transform.transform_point2(maxs),
     );
-    let rect = gdk::Rectangle::new(
-        top_left.x.floor() as i32,
-        top_left.y.floor() as i32,
-        ((bottom_right.x - top_left.x).ceil() as i32).max(1),
-        ((bottom_right.y - top_left.y).ceil() as i32).max(1),
+    let (rect, position) = popover_anchor(
+        canvas,
+        (top_left.x, top_left.y),
+        (bottom_right.x, bottom_right.y),
     );
 
     let ticks_switch = switch(settings.ticks);
@@ -92,6 +91,11 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         "The size of the numbers. The names of the axes are a little larger",
     )));
     let arrows_switch = switch(settings.arrows);
+    let arrow_size_spin = spin_button(
+        AxisEnd::ARROW_SIZE_MIN,
+        AxisEnd::ARROW_SIZE_MAX,
+        settings.arrow_size,
+    );
     let labels_switch = switch(settings.labels);
     // The 3D coordinate system has a third axis to name
     let name_count = if edit.three_d { 3 } else { 2 };
@@ -127,48 +131,47 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         .margin_start(6)
         .margin_end(6)
         .build();
-    let mut sections: Vec<Vec<(String, gtk4::Widget)>> = vec![
-        vec![
-            (gettext("Ticks"), ticks_switch.clone().upcast()),
-            (gettext("Number of Ticks"), count_spin.clone().upcast()),
-            (gettext("Tick Size"), tick_size_spin.clone().upcast()),
-            (
-                gettext("Same Spacing"),
-                constant_spacing_switch.clone().upcast(),
-            ),
-            (gettext("Numbers"), numbering_switch.clone().upcast()),
-            (gettext("Number Every"), label_every_spin.clone().upcast()),
-        ],
-        vec![(gettext("Text Size"), font_size_spin.clone().upcast())],
-        vec![
-            (gettext("Arrows"), arrows_switch.clone().upcast()),
-            (gettext("Axis Names"), labels_switch.clone().upcast()),
-            (gettext("Names"), names_box.clone().upcast()),
-        ],
+    // Two columns side by side, the ticks on the left and the rest on the right, so that the popup
+    // is not too tall to fit next to the coordinate system
+    let ticks_column: Vec<(String, gtk4::Widget)> = vec![
+        (gettext("Ticks"), ticks_switch.clone().upcast()),
+        (gettext("Number of Ticks"), count_spin.clone().upcast()),
+        (gettext("Tick Size"), tick_size_spin.clone().upcast()),
+        (
+            gettext("Same Spacing"),
+            constant_spacing_switch.clone().upcast(),
+        ),
+        (gettext("Numbers"), numbering_switch.clone().upcast()),
+        (gettext("Number Every"), label_every_spin.clone().upcast()),
+    ];
+    let mut ends_column: Vec<(String, gtk4::Widget)> = vec![
+        (gettext("Text Size"), font_size_spin.clone().upcast()),
+        (gettext("Arrows"), arrows_switch.clone().upcast()),
+        (gettext("Arrow Size"), arrow_size_spin.clone().upcast()),
+        (gettext("Axis Names"), labels_switch.clone().upcast()),
+        (gettext("Names"), names_box.clone().upcast()),
     ];
     if edit.three_d {
-        sections.push(vec![(
+        ends_column.push((
             gettext("Third Axis Into Page"),
             third_into_page_switch.clone().upcast(),
-        )]);
+        ));
     }
-    let mut row = 0;
-    for (i, section) in sections.iter().enumerate() {
-        if i > 0 {
-            grid.attach(&Separator::new(Orientation::Horizontal), 0, row, 2, 1);
-            row += 1;
-        }
-        for (title, control) in section {
+    let mut rows = 0;
+    for (column, entries) in [(0, &ticks_column), (3, &ends_column)] {
+        for (row, (title, control)) in entries.iter().enumerate() {
             let label = Label::builder()
                 .label(title.as_str())
                 .halign(Align::Start)
                 .valign(Align::Center)
                 .build();
-            grid.attach(&label, 0, row, 1, 1);
-            grid.attach(control, 1, row, 1, 1);
-            row += 1;
+            grid.attach(&label, column, row as i32, 1, 1);
+            grid.attach(control, column + 1, row as i32, 1, 1);
         }
+        rows = rows.max(entries.len() as i32);
     }
+    grid.attach(&Separator::new(Orientation::Vertical), 2, 0, 1, rows);
+    let row = rows;
 
     let done_button = Button::builder()
         .label(gettext("Done"))
@@ -177,12 +180,12 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         .margin_top(6)
         .css_classes(["suggested-action"])
         .build();
-    grid.attach(&done_button, 0, row, 2, 1);
+    grid.attach(&done_button, 0, row, 5, 1);
 
     let popover = Popover::builder()
         .name(POPOVER_NAME)
         .child(&grid)
-        .position(PositionType::Bottom)
+        .position(position)
         .pointing_to(&rect)
         .has_arrow(true)
         .autohide(true)
@@ -199,6 +202,7 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         label_every: label_every_spin.downgrade(),
         font_size: font_size_spin.downgrade(),
         arrows: arrows_switch.downgrade(),
+        arrow_size: arrow_size_spin.downgrade(),
         labels: labels_switch.downgrade(),
         names: name_entries.iter().map(|entry| entry.downgrade()).collect(),
         third_into_page: third_into_page_switch.downgrade(),
@@ -227,6 +231,7 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         &tick_size_spin,
         &label_every_spin,
         &font_size_spin,
+        &arrow_size_spin,
     ] {
         spin.connect_value_changed(clone!(
             #[strong]
@@ -329,6 +334,7 @@ struct Controls {
     label_every: glib::WeakRef<SpinButton>,
     font_size: glib::WeakRef<SpinButton>,
     arrows: glib::WeakRef<Switch>,
+    arrow_size: glib::WeakRef<SpinButton>,
     labels: glib::WeakRef<Switch>,
     names: Vec<glib::WeakRef<Entry>>,
     third_into_page: glib::WeakRef<Switch>,
@@ -353,6 +359,7 @@ impl Controls {
                 font_size: self.font_size.upgrade()?.value(),
             },
             arrows: self.arrows.upgrade()?.is_active(),
+            arrow_size: self.arrow_size.upgrade()?.value(),
             labels: self.labels.upgrade()?.is_active(),
             label_names,
             third_into_page: self.third_into_page.upgrade()?.is_active(),
@@ -383,10 +390,59 @@ impl Controls {
         if let Some(spin) = self.font_size.upgrade() {
             spin.set_sensitive(numbers || settings.labels);
         }
+        if let Some(spin) = self.arrow_size.upgrade() {
+            spin.set_sensitive(settings.arrows);
+        }
         for entry in self.names.iter().filter_map(|entry| entry.upgrade()) {
             entry.set_sensitive(settings.labels);
         }
     }
+}
+
+/// Where the popup points to, in canvas coordinates, and on which side of it it opens, for a
+/// coordinate system spanning the given corners in canvas coordinates.
+///
+/// It points to the part of the coordinate system that is in view: the canvas can be larger than
+/// what is shown of it, and a popup pointing outside the window ends up off screen, or is not
+/// shown at all. It opens on the side with more room.
+fn popover_anchor(
+    canvas: &RnCanvas,
+    top_left: (f64, f64),
+    bottom_right: (f64, f64),
+) -> (gdk::Rectangle, PositionType) {
+    let visible = canvas
+        .ancestor(ScrolledWindow::static_type())
+        .and_then(|scroller| {
+            let corner = |x: f64, y: f64| {
+                scroller.compute_point(canvas, &graphene::Point::new(x as f32, y as f32))
+            };
+            let start = corner(0.0, 0.0)?;
+            let end = corner(scroller.width() as f64, scroller.height() as f64)?;
+            Some((
+                (start.x() as f64, start.y() as f64),
+                (end.x() as f64, end.y() as f64),
+            ))
+        })
+        .unwrap_or(((0.0, 0.0), (canvas.width() as f64, canvas.height() as f64)));
+    let ((view_left, view_top), (view_right, view_bottom)) = visible;
+
+    // The part in view, or the point in view closest to it when none of it is
+    let left = top_left.0.clamp(view_left, view_right);
+    let right = bottom_right.0.clamp(view_left, view_right);
+    let top = top_left.1.clamp(view_top, view_bottom);
+    let bottom = bottom_right.1.clamp(view_top, view_bottom);
+    let rect = gdk::Rectangle::new(
+        left.floor() as i32,
+        top.floor() as i32,
+        ((right - left).ceil() as i32).max(1),
+        ((bottom - top).ceil() as i32).max(1),
+    );
+    let position = if view_bottom - bottom >= top - view_top {
+        PositionType::Bottom
+    } else {
+        PositionType::Top
+    };
+    (rect, position)
 }
 
 /// A switch for a row of the popup.

@@ -338,6 +338,21 @@
                     </object>
                   </child>
                   <child>
+                    <object class="AdwSpinRow" id="axis_arrow_size_row">
+                      <property name="title" translatable="yes">Arrow Size</property>
+                      <property name="numeric">true</property>
+                      <property name="adjustment">
+                        <object class="GtkAdjustment">
+                          <property name="lower">1</property>
+                          <property name="upper">50</property>
+                          <property name="step-increment">1</property>
+                          <property name="page-increment">5</property>
+                          <property name="value">5</property>
+                        </object>
+                      </property>
+                    </object>
+                  </child>
+                  <child>
                     <object class="AdwSwitchRow" id="axis_labels_row">
                       <property name="title" translatable="yes">Axis Names</property>
                     </object>

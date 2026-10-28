@@ -16,7 +16,7 @@ use rnote_compose::style::rough::roughoptions::FillStyle;
 use rnote_compose::style::smooth::{LineCap, LineStyle, SmoothOptions};
 use rnote_engine::pens::pensconfig::ShaperConfig;
 use rnote_engine::pens::pensconfig::shaperconfig::ShaperStyle;
-use rnote_engine::strokes::AxisTicks;
+use rnote_engine::strokes::{AxisEnd, AxisTicks};
 
 mod imp {
     use super::*;
@@ -65,6 +65,8 @@ mod imp {
         pub(crate) axis_tick_constant_spacing_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub(crate) axis_arrows_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(crate) axis_arrow_size_row: TemplateChild<adw::SpinRow>,
         #[template_child]
         pub(crate) axis_labels_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
@@ -512,6 +514,24 @@ impl RnShaperPage {
                     .axis_arrows = row.is_active();
             }
         ));
+        imp.axis_arrows_row
+            .bind_property("active", &*imp.axis_arrow_size_row, "sensitive")
+            .sync_create()
+            .build();
+        imp.axis_arrow_size_row
+            .set_range(AxisEnd::ARROW_SIZE_MIN, AxisEnd::ARROW_SIZE_MAX);
+        imp.axis_arrow_size_row.connect_changed(clone!(
+            #[weak]
+            appwindow,
+            move |row| {
+                appwindow
+                    .engine_config()
+                    .write()
+                    .pens_config
+                    .shaper_config
+                    .axis_arrow_size = row.value();
+            }
+        ));
         imp.axis_labels_row.connect_active_notify(clone!(
             #[weak]
             appwindow,
@@ -856,6 +876,8 @@ impl RnShaperPage {
         imp.axis_tick_constant_spacing_row
             .set_active(shaper_config.axis_tick_constant_spacing);
         imp.axis_arrows_row.set_active(shaper_config.axis_arrows);
+        imp.axis_arrow_size_row
+            .set_value(shaper_config.axis_arrow_size);
         imp.axis_labels_row.set_active(shaper_config.axis_labels);
         for (row, name) in [
             &*imp.axis_label_x_row,

@@ -386,7 +386,17 @@ impl RnAppWindow {
             canvas.enable_text_input(enable_text_input);
         }
         match widget_flags.axis_ticks_popup {
-            Some(true) => crate::axisticks::show_axis_ticks_popover(self, canvas),
+            // Shown once the pen lift that finished the coordinate system is handled: a popup
+            // opened while the pen still holds the input can be dismissed right away
+            Some(true) => {
+                glib::idle_add_local_once(clone!(
+                    #[weak(rename_to=appwindow)]
+                    self,
+                    #[weak]
+                    canvas,
+                    move || crate::axisticks::show_axis_ticks_popover(&appwindow, &canvas)
+                ));
+            }
             Some(false) => crate::axisticks::hide_axis_ticks_popover(canvas),
             None => {}
         }

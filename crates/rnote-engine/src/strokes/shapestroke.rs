@@ -316,7 +316,7 @@ impl Default for AxisEnd {
     fn default() -> Self {
         Self {
             arrow: true,
-            arrow_size: 7.5,
+            arrow_size: 5.0,
             label: String::new(),
             font_size: 15.0,
         }
@@ -326,14 +326,21 @@ impl Default for AxisEnd {
 impl AxisEnd {
     /// How much larger the name of an axis is than the numbers on it.
     pub const LABEL_FONT_FACTOR: f64 = 1.25;
-    /// How much longer the sides of the arrow head are than the ticks reach to each side.
-    pub const ARROW_SIZE_FACTOR: f64 = 1.25;
     /// The angle between the sides of the arrow head and the axis.
     const ARROW_ANGLE: f64 = std::f64::consts::PI / 6.0;
 
+    pub const ARROW_SIZE_MIN: f64 = 1.0;
+    pub const ARROW_SIZE_MAX: f64 = 50.0;
+
+    /// The length of the sides of an arrow head of the given size on an axis of the given stroke
+    /// width: a little longer for thick axes, so that their head still shows.
+    fn arrow_side(arrow_size: f64, stroke_width: f64) -> f64 {
+        arrow_size + stroke_width * 0.5
+    }
+
     /// How far back from the tip of the axis an arrow head of the given size reaches.
-    pub fn arrow_reach(arrow_size: f64) -> f64 {
-        arrow_size * Self::ARROW_ANGLE.cos()
+    pub fn arrow_reach(arrow_size: f64, stroke_width: f64) -> f64 {
+        Self::arrow_side(arrow_size, stroke_width) * Self::ARROW_ANGLE.cos()
     }
     /// The gap between the tip of the axis and its name.
     const LABEL_GAP: f64 = 4.0;
@@ -347,8 +354,7 @@ impl AxisEnd {
         }
         let unit = dir / len;
         let normal = Vector2::new(-unit.y, unit.x);
-        // The sides grow a little with the stroke, so a thick axis still has a visible head
-        let size = self.arrow_size + stroke_width;
+        let size = Self::arrow_side(self.arrow_size, stroke_width);
         let back = axis.end - unit * size * Self::ARROW_ANGLE.cos();
         let side = normal * size * Self::ARROW_ANGLE.sin();
         Some([

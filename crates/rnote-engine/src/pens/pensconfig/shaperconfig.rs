@@ -91,6 +91,9 @@ pub struct ShaperConfig {
     /// Whether the positive half-axes of coordinate systems end in an arrow head.
     #[serde(rename = "axis_arrows")]
     pub axis_arrows: bool,
+    /// The length of the sides of the arrow heads of coordinate systems.
+    #[serde(rename = "axis_arrow_size", with = "rnote_compose::serialize::f64_dp3")]
+    pub axis_arrow_size: f64,
     /// Whether the positive half-axes of coordinate systems are named at their tip.
     #[serde(rename = "axis_labels")]
     pub axis_labels: bool,
@@ -128,6 +131,7 @@ impl Default for ShaperConfig {
             axis_tick_label_every: 1,
             axis_tick_font_size: Self::AXIS_TICK_FONT_SIZE_DEFAULT,
             axis_arrows: true,
+            axis_arrow_size: Self::AXIS_ARROW_SIZE_DEFAULT,
             axis_labels: true,
             axis_label_names: ["x".to_string(), "y".to_string(), "z".to_string()],
             axis_third_into_page: false,
@@ -145,6 +149,7 @@ impl ShaperConfig {
     pub const AXIS_TICK_SIZE_MAX: f64 = 50.0;
     pub const AXIS_TICK_SIZE_DEFAULT: f64 = 6.0;
     pub const AXIS_TICK_FONT_SIZE_DEFAULT: f64 = 12.0;
+    pub const AXIS_ARROW_SIZE_DEFAULT: f64 = 5.0;
 
     /// The look of the unit markings of new coordinate systems.
     pub fn axis_ticks_style(&self) -> AxisTicksStyle {
@@ -172,6 +177,7 @@ impl ShaperConfig {
             constant_spacing: self.axis_tick_constant_spacing,
             tick_style: self.axis_ticks_style(),
             arrows: self.axis_arrows,
+            arrow_size: self.axis_arrow_size,
             labels: self.axis_labels,
             label_names: self.axis_label_names.clone(),
             third_into_page: self.axis_third_into_page,
@@ -184,6 +190,7 @@ impl ShaperConfig {
         self.axis_tick_constant_spacing = settings.constant_spacing;
         self.set_axis_ticks_style(settings.tick_style);
         self.axis_arrows = settings.arrows;
+        self.axis_arrow_size = settings.arrow_size;
         self.axis_labels = settings.labels;
         self.axis_label_names = settings.label_names.clone();
         self.axis_third_into_page = settings.third_into_page;
