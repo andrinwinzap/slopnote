@@ -374,8 +374,14 @@
                   </child>
                   <child>
                     <object class="AdwSwitchRow" id="axis_third_into_page_row">
-                      <property name="title" translatable="yes">Third Axis Into Page</property>
-                      <property name="subtitle" translatable="yes">In 3D coordinate systems, the axis across the page grows into it instead of coming out of it. The axes are named to stay right-handed: then x is to the right and y across the page</property>
+                      <property name="title" translatable="yes">Depth Axis Into Page</property>
+                      <property name="subtitle" translatable="yes">In 3D coordinate systems, the axis across the page goes into it instead of coming out of it</property>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="AdwSwitchRow" id="axis_right_handed_row">
+                      <property name="title" translatable="yes">Right-Handed</property>
+                      <property name="subtitle" translatable="yes">3D coordinate systems are right-handed rather than left-handed, which decides whether x or y is the depth axis</property>
                     </object>
                   </child>
                 </object>

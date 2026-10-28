@@ -120,7 +120,11 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
     }
     let third_into_page_switch = switch(settings.third_into_page);
     third_into_page_switch.set_tooltip_text(Some(&gettext(
-        "Whether the axis across the page grows into it, towards the upper right, or comes out of it, towards the lower left. The axes are named to stay right-handed: out of the page x is across it and y to the right, into the page x is to the right and y across it",
+        "Whether the depth axis across the page goes into it, towards the upper right, or comes out of it, towards the lower left",
+    )));
+    let right_handed_switch = switch(settings.right_handed);
+    right_handed_switch.set_tooltip_text(Some(&gettext(
+        "Whether the coordinate system is right-handed or left-handed, which decides whether x or y is the depth axis",
     )));
 
     let grid = Grid::builder()
@@ -153,8 +157,12 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
     ];
     if edit.three_d {
         ends_column.push((
-            gettext("Third Axis Into Page"),
+            gettext("Depth Axis Into Page"),
             third_into_page_switch.clone().upcast(),
+        ));
+        ends_column.push((
+            gettext("Right-Handed"),
+            right_handed_switch.clone().upcast(),
         ));
     }
     let mut rows = 0;
@@ -206,6 +214,7 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         labels: labels_switch.downgrade(),
         names: name_entries.iter().map(|entry| entry.downgrade()).collect(),
         third_into_page: third_into_page_switch.downgrade(),
+        right_handed: right_handed_switch.downgrade(),
         // Names that have no entry stay as they were
         default_names: settings.label_names.clone(),
     });
@@ -246,6 +255,7 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         &arrows_switch,
         &labels_switch,
         &third_into_page_switch,
+        &right_handed_switch,
     ] {
         switch.connect_active_notify(clone!(
             #[strong]
@@ -338,6 +348,7 @@ struct Controls {
     labels: glib::WeakRef<Switch>,
     names: Vec<glib::WeakRef<Entry>>,
     third_into_page: glib::WeakRef<Switch>,
+    right_handed: glib::WeakRef<Switch>,
     default_names: [String; 3],
 }
 
@@ -363,6 +374,7 @@ impl Controls {
             labels: self.labels.upgrade()?.is_active(),
             label_names,
             third_into_page: self.third_into_page.upgrade()?.is_active(),
+            right_handed: self.right_handed.upgrade()?.is_active(),
         })
     }
 

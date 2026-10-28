@@ -78,6 +78,8 @@ mod imp {
         #[template_child]
         pub(crate) axis_third_into_page_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub(crate) axis_right_handed_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub(crate) smoothstyle_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
         pub(crate) smoothstyle_line_cap_row: TemplateChild<adw::ComboRow>,
@@ -581,6 +583,18 @@ impl RnShaperPage {
                     .axis_third_into_page = row.is_active();
             }
         ));
+        imp.axis_right_handed_row.connect_active_notify(clone!(
+            #[weak]
+            appwindow,
+            move |row| {
+                appwindow
+                    .engine_config()
+                    .write()
+                    .pens_config
+                    .shaper_config
+                    .axis_right_handed = row.is_active();
+            }
+        ));
 
         // Smooth style
         // Line cap
@@ -894,6 +908,8 @@ impl RnShaperPage {
         }
         imp.axis_third_into_page_row
             .set_active(shaper_config.axis_third_into_page);
+        imp.axis_right_handed_row
+            .set_active(shaper_config.axis_right_handed);
 
         // Constraints
         imp.constraint_enabled_row

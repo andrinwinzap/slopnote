@@ -97,16 +97,17 @@ pub struct ShaperConfig {
     /// Whether the positive half-axes of coordinate systems are named at their tip.
     #[serde(rename = "axis_labels")]
     pub axis_labels: bool,
-    /// The names of the axes: the x, y and z axis. 3D coordinate systems are right-handed with z
-    /// up: x is across the page and y to the right when the third axis comes out of the page, and
-    /// x to the right and y across the page when it goes into it.
+    /// The names of the axes: the x, y and z axis. In 3D coordinate systems z is up, and which of
+    /// x and y is the depth axis depends on its direction and the handedness.
     #[serde(rename = "axis_label_names")]
     pub axis_label_names: [String; 3],
-    /// Whether the third axis of 3D coordinate systems grows into the page, towards the upper
-    /// right, instead of out of it, towards the lower left. The axes are named so that the
-    /// system stays right-handed.
+    /// Whether the depth axis of 3D coordinate systems grows into the page, towards the upper
+    /// right, instead of out of it, towards the lower left.
     #[serde(rename = "axis_third_into_page")]
     pub axis_third_into_page: bool,
+    /// Whether 3D coordinate systems are right-handed, rather than left-handed.
+    #[serde(rename = "axis_right_handed")]
+    pub axis_right_handed: bool,
 }
 
 impl Default for ShaperConfig {
@@ -137,6 +138,7 @@ impl Default for ShaperConfig {
             axis_labels: true,
             axis_label_names: ["x".to_string(), "y".to_string(), "z".to_string()],
             axis_third_into_page: false,
+            axis_right_handed: true,
         }
     }
 }
@@ -183,6 +185,7 @@ impl ShaperConfig {
             labels: self.axis_labels,
             label_names: self.axis_label_names.clone(),
             third_into_page: self.axis_third_into_page,
+            right_handed: self.axis_right_handed,
         }
     }
 
@@ -196,6 +199,7 @@ impl ShaperConfig {
         self.axis_labels = settings.labels;
         self.axis_label_names = settings.label_names.clone();
         self.axis_third_into_page = settings.third_into_page;
+        self.axis_right_handed = settings.right_handed;
     }
 
     /// The factor the stroke width is scaled with for the given mean pen pressure.

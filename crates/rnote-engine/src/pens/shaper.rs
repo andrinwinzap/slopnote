@@ -60,8 +60,10 @@ pub struct CoordSystemSettings {
     pub labels: bool,
     /// The names of the x, y and z axis.
     pub label_names: [String; 3],
-    /// Whether the third axis of a 3D coordinate system grows into the page.
+    /// Whether the depth axis of a 3D coordinate system grows into the page.
     pub third_into_page: bool,
+    /// Whether a 3D coordinate system is right-handed, rather than left-handed.
+    pub right_handed: bool,
 }
 
 /// The coordinate system that can currently be edited.
@@ -88,28 +90,28 @@ fn is_coord_system(builder_type: ShapeBuilderType) -> bool {
 /// into the axis names (x, y, z), and whether it is the negative half.
 ///
 /// This follows the usual convention, regardless of the direction the axis was drawn in: x grows
-/// to the right and y upwards. 3D coordinate systems are right-handed with z upwards: when the
-/// axis across the page comes out of it, towards the lower left, it is x and y grows to the
-/// right; when it goes into the page, towards the upper right, it is y and x grows to the right.
+/// to the right and y upwards. In 3D coordinate systems z grows upwards, and the depth axis across
+/// the page grows out of it towards the lower left, or into it towards the upper right. Which of
+/// x and y is the depth axis and which grows to the right is what makes the system right- or
+/// left-handed: right-handed, x is the depth axis coming out of the page or y the one going into
+/// it.
 fn half_axis_role(
     builder_type: ShapeBuilderType,
     dir: Vector2,
-    third_into_page: bool,
+    depth_into_page: bool,
+    right_handed: bool,
 ) -> (usize, bool) {
     let three_d = matches!(builder_type, ShapeBuilderType::CoordSystem3D);
+    let depth_is_x = depth_into_page != right_handed;
     let (dx, dy) = (dir.x.abs(), dir.y.abs());
     if three_d && (dx - dy).abs() <= 1e-6 * (dx + dy) {
         let towards_lower_left = dir.x < 0.0;
         (
-            if third_into_page { 1 } else { 0 },
-            towards_lower_left == third_into_page,
+            if depth_is_x { 0 } else { 1 },
+            towards_lower_left == depth_into_page,
         )
     } else if dx > dy {
-        let name = match (three_d, third_into_page) {
-            (true, false) => 1,
-            _ => 0,
-        };
-        (name, dir.x < 0.0)
+        (if three_d && depth_is_x { 1 } else { 0 }, dir.x < 0.0)
     } else {
         // Surface coordinates grow downwards
         (if three_d { 2 } else { 1 }, dir.y > 0.0)
@@ -186,6 +188,7 @@ fn apply_coord_system(
             builder_type,
             line.end - line.start,
             settings.third_into_page,
+            settings.right_handed,
         );
 
         let ticks = shapestroke.axis_ticks.take();
@@ -665,7 +668,12 @@ mod tests {
     #[test]
     fn half_axes_of_a_2d_coordinate_system() {
         let role = |x: f64, y: f64| {
-            half_axis_role(ShapeBuilderType::CoordSystem2D, Vector2::new(x, y), false)
+            half_axis_role(
+                ShapeBuilderType::CoordSystem2D,
+                Vector2::new(x, y),
+                false,
+                true,
+            )
         };
         assert_eq!(role(10.0, 0.0), (0, false));
         assert_eq!(role(-10.0, 0.0), (0, true));
@@ -676,22 +684,29 @@ mod tests {
 
     #[test]
     fn half_axes_of_a_3d_coordinate_system() {
-        let role = |x: f64, y: f64, into_page: bool| {
+        let role = |x: f64, y: f64, into_page: bool, right_handed: bool| {
             half_axis_role(
                 ShapeBuilderType::CoordSystem3D,
                 Vector2::new(x, y),
                 into_page,
+                right_handed,
             )
         };
-        // Out of the page: x across towards the lower left, y to the right, z up
-        assert_eq!(role(-7.0, 7.0, false), (0, false));
-        assert_eq!(role(7.0, -7.0, false), (0, true));
-        assert_eq!(role(10.0, 0.0, false), (1, false));
-        assert_eq!(role(0.0, -10.0, false), (2, false));
-        // Into the page, still right-handed: x to the right, y across towards the upper right, z up
-        assert_eq!(role(10.0, 0.0, true), (0, false));
-        assert_eq!(role(7.0, -7.0, true), (1, false));
-        assert_eq!(role(-7.0, 7.0, true), (1, true));
-        assert_eq!(role(0.0, -10.0, true), (2, false));
+        // Right-handed, out of the page: x across towards the lower left, y to the right, z up
+        assert_eq!(role(-7.0, 7.0, false, true), (0, false));
+        assert_eq!(role(7.0, -7.0, false, true), (0, true));
+        assert_eq!(role(10.0, 0.0, false, true), (1, false));
+        assert_eq!(role(0.0, -10.0, false, true), (2, false));
+        // Right-handed, into the page: x to the right, y across towards the upper right, z up
+        assert_eq!(role(10.0, 0.0, true, true), (0, false));
+        assert_eq!(role(7.0, -7.0, true, true), (1, false));
+        assert_eq!(role(-7.0, 7.0, true, true), (1, true));
+        assert_eq!(role(0.0, -10.0, true, true), (2, false));
+        // Left-handed, the other way round
+        assert_eq!(role(-7.0, 7.0, false, false), (1, false));
+        assert_eq!(role(10.0, 0.0, false, false), (0, false));
+        assert_eq!(role(7.0, -7.0, true, false), (0, false));
+        assert_eq!(role(10.0, 0.0, true, false), (1, false));
+        assert_eq!(role(0.0, -10.0, true, false), (2, false));
     }
 }
