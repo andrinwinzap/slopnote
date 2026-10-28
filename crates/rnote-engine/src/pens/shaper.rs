@@ -88,8 +88,9 @@ fn is_coord_system(builder_type: ShapeBuilderType) -> bool {
 /// into the axis names (x, y, z), and whether it is the negative half.
 ///
 /// This follows the usual convention, regardless of the direction the axis was drawn in: x grows
-/// to the right and y upwards, and in 3D coordinate systems the x axis runs across the page,
-/// towards the lower left out of it (or the upper right into it), y to the right and z upwards.
+/// to the right and y upwards. 3D coordinate systems are right-handed with z upwards: when the
+/// axis across the page comes out of it, towards the lower left, it is x and y grows to the
+/// right; when it goes into the page, towards the upper right, it is y and x grows to the right.
 fn half_axis_role(
     builder_type: ShapeBuilderType,
     dir: Vector2,
@@ -99,9 +100,16 @@ fn half_axis_role(
     let (dx, dy) = (dir.x.abs(), dir.y.abs());
     if three_d && (dx - dy).abs() <= 1e-6 * (dx + dy) {
         let towards_lower_left = dir.x < 0.0;
-        (0, towards_lower_left == third_into_page)
+        (
+            if third_into_page { 1 } else { 0 },
+            towards_lower_left == third_into_page,
+        )
     } else if dx > dy {
-        (if three_d { 1 } else { 0 }, dir.x < 0.0)
+        let name = match (three_d, third_into_page) {
+            (true, false) => 1,
+            _ => 0,
+        };
+        (name, dir.x < 0.0)
     } else {
         // Surface coordinates grow downwards
         (if three_d { 2 } else { 1 }, dir.y > 0.0)
@@ -675,13 +683,15 @@ mod tests {
                 into_page,
             )
         };
-        assert_eq!(role(10.0, 0.0, false), (1, false));
-        assert_eq!(role(0.0, -10.0, false), (2, false));
-        // The third axis comes out of the page towards the lower left
+        // Out of the page: x across towards the lower left, y to the right, z up
         assert_eq!(role(-7.0, 7.0, false), (0, false));
         assert_eq!(role(7.0, -7.0, false), (0, true));
-        // Or goes into it towards the upper right
-        assert_eq!(role(-7.0, 7.0, true), (0, true));
-        assert_eq!(role(7.0, -7.0, true), (0, false));
+        assert_eq!(role(10.0, 0.0, false), (1, false));
+        assert_eq!(role(0.0, -10.0, false), (2, false));
+        // Into the page, still right-handed: x to the right, y across towards the upper right, z up
+        assert_eq!(role(10.0, 0.0, true), (0, false));
+        assert_eq!(role(7.0, -7.0, true), (1, false));
+        assert_eq!(role(-7.0, 7.0, true), (1, true));
+        assert_eq!(role(0.0, -10.0, true), (2, false));
     }
 }

@@ -375,7 +375,7 @@
                   <child>
                     <object class="AdwSwitchRow" id="axis_third_into_page_row">
                       <property name="title" translatable="yes">Third Axis Into Page</property>
-                      <property name="subtitle" translatable="yes">In 3D coordinate systems, the axis across the page grows into it instead of coming out of it</property>
+                      <property name="subtitle" translatable="yes">In 3D coordinate systems, the axis across the page grows into it instead of coming out of it. The axes are named to stay right-handed: then x is to the right and y across the page</property>
                     </object>
                   </child>
                 </object>

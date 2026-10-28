@@ -120,7 +120,7 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
     }
     let third_into_page_switch = switch(settings.third_into_page);
     third_into_page_switch.set_tooltip_text(Some(&gettext(
-        "Whether the axis across the page grows into it, towards the upper right, or comes out of it, towards the lower left",
+        "Whether the axis across the page grows into it, towards the upper right, or comes out of it, towards the lower left. The axes are named to stay right-handed: out of the page x is across it and y to the right, into the page x is to the right and y across it",
     )));
 
     let grid = Grid::builder()

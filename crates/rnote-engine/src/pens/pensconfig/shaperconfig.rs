@@ -97,12 +97,14 @@ pub struct ShaperConfig {
     /// Whether the positive half-axes of coordinate systems are named at their tip.
     #[serde(rename = "axis_labels")]
     pub axis_labels: bool,
-    /// The names of the axes: the x, y and z axis. In 3D coordinate systems the x axis is the one
-    /// across the page, the y axis the horizontal and the z axis the vertical one.
+    /// The names of the axes: the x, y and z axis. 3D coordinate systems are right-handed with z
+    /// up: x is across the page and y to the right when the third axis comes out of the page, and
+    /// x to the right and y across the page when it goes into it.
     #[serde(rename = "axis_label_names")]
     pub axis_label_names: [String; 3],
     /// Whether the third axis of 3D coordinate systems grows into the page, towards the upper
-    /// right, instead of out of it, towards the lower left.
+    /// right, instead of out of it, towards the lower left. The axes are named so that the
+    /// system stays right-handed.
     #[serde(rename = "axis_third_into_page")]
     pub axis_third_into_page: bool,
 }
