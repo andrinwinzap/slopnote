@@ -37,7 +37,7 @@ impl KeyTree {
     /// Return the keys that intersect with the given bounds.
     pub(crate) fn keys_intersecting_bounds(&self, bounds: Aabb) -> Vec<StrokeKey> {
         self.0
-            .locate_in_envelope_intersecting(rstar::AABB::from_corners(
+            .locate_in_envelope_intersecting(&rstar::AABB::from_corners(
                 [bounds.mins[0], bounds.mins[1]],
                 [bounds.maxs[0], bounds.maxs[1]],
             ))
@@ -48,7 +48,7 @@ impl KeyTree {
     /// Return the keys that are completely contained in the given bounds.
     pub(crate) fn keys_in_bounds(&self, bounds: Aabb) -> Vec<StrokeKey> {
         self.0
-            .locate_in_envelope(rstar::AABB::from_corners(
+            .locate_in_envelope(&rstar::AABB::from_corners(
                 [bounds.mins[0], bounds.mins[1]],
                 [bounds.maxs[0], bounds.maxs[1]],
             ))
@@ -96,4 +96,48 @@ fn new_keytree_object(key: StrokeKey, bounds: Aabb) -> KeyTreeObject {
         ),
         key,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slotmap::SlotMap;
+
+    /// Moving every stroke of a loaded document, as inserting space above all of it does.
+    ///
+    /// rstar 0.13.0 panics here ("This is a bug in rstar.") on documents of handwriting, which is
+    /// why it is held at 0.12: a merge from upstream brings 0.13 back.
+    #[test]
+    fn moving_all_strokes_of_a_loaded_document() {
+        let mut keys = SlotMap::<StrokeKey, ()>::with_key();
+        // Deterministic pseudo-random small boxes, as the letters of a few pages of handwriting
+        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % 10_000) as f64 / 10_000.0
+        };
+        let strokes = (0..1600)
+            .map(|_| {
+                let pos = Vector2::new(40.0 + next() * 700.0, next() * 4000.0);
+                let size = Vector2::new(2.0 + next() * 14.0, 2.0 + next() * 14.0);
+                (keys.insert(()), Aabb::new(pos, pos + size))
+            })
+            .collect::<Vec<_>>();
+
+        let mut tree = KeyTree::default();
+        tree.rebuild_from_vec(strokes.clone());
+        for offset in [30.0, -30.0] {
+            for (key, bounds) in &strokes {
+                let moved = Aabb::new(
+                    bounds.mins + Vector2::new(0.0, offset),
+                    bounds.maxs + Vector2::new(0.0, offset),
+                );
+                tree.update_with_key(*key, moved);
+            }
+        }
+
+        assert_eq!(tree.iter().count(), strokes.len());
+    }
 }
