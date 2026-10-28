@@ -112,10 +112,6 @@ impl RnOverlays {
         self.imp().colorpicker.get()
     }
 
-    pub(crate) fn toolbar_overlay(&self) -> Overlay {
-        self.imp().toolbar_overlay.get()
-    }
-
     pub(crate) fn toast_overlay(&self) -> adw::ToastOverlay {
         self.imp().toast_overlay.get()
     }

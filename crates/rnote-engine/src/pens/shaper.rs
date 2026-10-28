@@ -38,9 +38,6 @@ enum ShaperState {
         builder_type: ShapeBuilderType,
         settings: CoordSystemSettings,
         anchor: Aabb,
-        /// Where the pen went down on the canvas meanwhile, while it has not moved far enough
-        /// to be drawing.
-        press: Option<Element>,
     },
 }
 
@@ -121,10 +118,6 @@ fn half_axis_lengths(store: &crate::store::StrokeStore, keys: &[StrokeKey]) -> V
         })
         .collect()
 }
-
-/// How far the pen has to move on the canvas, in surface pixels, to be drawing rather than tapping
-/// while a coordinate system is being edited.
-const DRAWING_DISTANCE: f64 = 8.0;
 
 /// The gap between the last tick of an axis and its arrow head.
 const ARROW_TICK_GAP: f64 = 4.0;
@@ -260,54 +253,11 @@ impl PenBehaviour for Shaper {
     ) -> (EventResult<PenProgress>, WidgetFlags) {
         let mut widget_flags = WidgetFlags::default();
 
-        // Tapping the canvas leaves the coordinate system and its popup be, so that missing the
-        // popup does not close it. Drawing ends the editing, and the new shape begins where the
-        // pen went down.
-        if let ShaperState::EditCoordSystem { press, .. } = &mut self.state {
-            match &event {
-                PenEvent::Down {
-                    element,
-                    modifier_keys,
-                } => {
-                    let start = *press.get_or_insert(*element);
-                    let drawing = (element.pos - start.pos).length()
-                        * engine_view.camera.total_zoom()
-                        > DRAWING_DISTANCE;
-                    if !drawing {
-                        return (
-                            EventResult {
-                                handled: true,
-                                propagate: EventPropagation::Stop,
-                                progress: PenProgress::Idle,
-                            },
-                            widget_flags,
-                        );
-                    }
-                    let modifier_keys = modifier_keys.clone();
-                    widget_flags |= self.finish_coord_system_edit(engine_view);
-                    let (_, wf) = self.handle_event(
-                        PenEvent::Down {
-                            element: start,
-                            modifier_keys,
-                        },
-                        now,
-                        engine_view,
-                    );
-                    widget_flags |= wf;
-                }
-                PenEvent::Up { .. } | PenEvent::Cancel => {
-                    *press = None;
-                    return (
-                        EventResult {
-                            handled: true,
-                            propagate: EventPropagation::Stop,
-                            progress: PenProgress::Idle,
-                        },
-                        widget_flags,
-                    );
-                }
-                _ => {}
-            }
+        // A new pen press ends the editing of the last coordinate system.
+        if matches!(self.state, ShaperState::EditCoordSystem { .. })
+            && matches!(event, PenEvent::Down { .. })
+        {
+            widget_flags |= self.finish_coord_system_edit(engine_view);
         }
 
         let event_result = match (&mut self.state, event) {
@@ -499,7 +449,6 @@ impl PenBehaviour for Shaper {
                                     builder_type,
                                     settings,
                                     anchor,
-                                    press: None,
                                 };
                                 widget_flags.axis_ticks_popup = Some(true);
                             }
