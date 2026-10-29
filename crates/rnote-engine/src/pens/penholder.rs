@@ -181,6 +181,7 @@ impl PenHolder {
 
     /// Reinstall the pen for the current style.
     pub fn reinstall_pen_current_style(&mut self, engine_view: &mut EngineViewMut) -> WidgetFlags {
+        tracing::debug!(style = ?self.current_pen.style(), "reinstalling the current pen");
         // first cancel the current pen
         let (_, mut widget_flags) =
             self.current_pen

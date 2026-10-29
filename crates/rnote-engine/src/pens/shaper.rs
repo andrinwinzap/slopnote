@@ -20,6 +20,7 @@ use rnote_compose::eventresult::{EventPropagation, EventResult};
 use rnote_compose::penevent::{KeyboardKey, ModifierKey, PenEvent, PenProgress};
 use rnote_compose::penpath::Element;
 use std::time::Instant;
+use tracing::debug;
 
 #[derive(Debug)]
 enum ShaperState {
@@ -247,6 +248,7 @@ impl PenBehaviour for Shaper {
     fn deinit(&mut self) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
         if matches!(self.state, ShaperState::EditCoordSystem { .. }) {
+            debug!("the shaper is put away while a coordinate system is being edited");
             self.state = ShaperState::Idle;
             widget_flags.axis_ticks_popup = Some(false);
         }
@@ -273,6 +275,7 @@ impl PenBehaviour for Shaper {
         if matches!(self.state, ShaperState::EditCoordSystem { .. })
             && matches!(event, PenEvent::Down { .. })
         {
+            debug!("a pen press on the canvas ends editing the coordinate system");
             widget_flags |= self.finish_coord_system_edit(engine_view);
         }
 
@@ -460,6 +463,10 @@ impl PenBehaviour for Shaper {
                             if coord_system
                                 && let Some(anchor) = engine_view.store.bounds_for_strokes(&keys)
                             {
+                                debug!(
+                                    strokes = keys.len(),
+                                    "editing a coordinate system that was just drawn"
+                                );
                                 self.state = ShaperState::EditCoordSystem {
                                     keys,
                                     builder_type,
@@ -533,8 +540,13 @@ impl Shaper {
             ..
         } = &mut self.state
         else {
+            debug!("a change from the popup, but no coordinate system is being edited");
             return widget_flags;
         };
+        debug!(
+            strokes = keys.len(),
+            "a change from the popup to the coordinate system"
+        );
         new_settings.count = new_settings
             .count
             .clamp(AxisTicks::COUNT_MIN, AxisTicks::COUNT_MAX);
@@ -578,6 +590,7 @@ impl Shaper {
     pub fn finish_coord_system_edit(&mut self, engine_view: &mut EngineViewMut) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
         if matches!(self.state, ShaperState::EditCoordSystem { .. }) {
+            debug!("editing the coordinate system is finished");
             self.state = ShaperState::Idle;
             widget_flags |= engine_view
                 .store
@@ -711,5 +724,76 @@ mod tests {
         assert_eq!(role(7.0, -7.0, true, false), (0, false));
         assert_eq!(role(10.0, 0.0, true, false), (1, false));
         assert_eq!(role(0.0, -10.0, true, false), (2, false));
+    }
+
+    /// What the popup does: change a coordinate system that was just drawn.
+    #[test]
+    fn a_coordinate_system_changes_with_the_popup() {
+        use crate::Engine;
+        use crate::pens::PenStyle;
+        use rnote_compose::penevent::PenEvent;
+        use std::collections::HashSet;
+
+        let mut engine = Engine::default();
+        engine
+            .engine_config()
+            .write()
+            .pens_config
+            .shaper_config
+            .builder_type = ShapeBuilderType::CoordSystem2D;
+        let _ = engine.change_pen_style(PenStyle::Shaper);
+        let now = Instant::now();
+        for (pos, down) in [
+            (Vector2::new(100.0, 300.0), true),
+            (Vector2::new(300.0, 100.0), true),
+            (Vector2::new(300.0, 100.0), false),
+        ] {
+            let element = Element::new(pos, 0.5);
+            let event = if down {
+                PenEvent::Down {
+                    element,
+                    modifier_keys: HashSet::new(),
+                }
+            } else {
+                PenEvent::Up {
+                    element,
+                    modifier_keys: HashSet::new(),
+                }
+            };
+            let _ = engine.handle_pen_event(event, None, now);
+        }
+
+        let edit = engine
+            .coord_system_edit()
+            .expect("a coordinate system that can be edited");
+        assert!(edit.settings.arrows);
+        let arrows = |engine: &Engine| {
+            engine
+                .store
+                .stroke_keys_unordered()
+                .into_iter()
+                .filter(|&key| match engine.store.get_stroke_ref(key) {
+                    Some(Stroke::ShapeStroke(stroke)) => {
+                        stroke.axis_end.as_ref().is_some_and(|end| end.arrow)
+                    }
+                    _ => false,
+                })
+                .count()
+        };
+        assert_eq!(arrows(&engine), 2);
+
+        let _ = engine.coord_system_update(CoordSystemSettings {
+            arrows: false,
+            ..edit.settings
+        });
+        assert_eq!(arrows(&engine), 0);
+        assert!(
+            !engine
+                .engine_config()
+                .read()
+                .pens_config
+                .shaper_config
+                .axis_arrows
+        );
     }
 }
