@@ -214,8 +214,11 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         arrow_size: arrow_size_spin.downgrade(),
         labels: labels_switch.downgrade(),
         names: name_entries.iter().map(|entry| entry.downgrade()).collect(),
-        third_into_page: third_into_page_switch.downgrade(),
-        right_handed: right_handed_switch.downgrade(),
+        // Only shown, and so only kept alive, for 3D coordinate systems
+        third_into_page: edit.three_d.then(|| third_into_page_switch.downgrade()),
+        right_handed: edit.three_d.then(|| right_handed_switch.downgrade()),
+        default_third_into_page: settings.third_into_page,
+        default_right_handed: settings.right_handed,
         // Names that have no entry stay as they were
         default_names: settings.label_names.clone(),
     });
@@ -350,8 +353,12 @@ struct Controls {
     arrow_size: glib::WeakRef<SpinButton>,
     labels: glib::WeakRef<Switch>,
     names: Vec<glib::WeakRef<Entry>>,
-    third_into_page: glib::WeakRef<Switch>,
-    right_handed: glib::WeakRef<Switch>,
+    /// The switches for the 3D settings, which are only there for 3D coordinate systems. A
+    /// widget that is not shown is not kept alive, and then it cannot be read either.
+    third_into_page: Option<glib::WeakRef<Switch>>,
+    right_handed: Option<glib::WeakRef<Switch>>,
+    default_third_into_page: bool,
+    default_right_handed: bool,
     default_names: [String; 3],
 }
 
@@ -376,8 +383,14 @@ impl Controls {
             arrow_size: self.arrow_size.upgrade()?.value(),
             labels: self.labels.upgrade()?.is_active(),
             label_names,
-            third_into_page: self.third_into_page.upgrade()?.is_active(),
-            right_handed: self.right_handed.upgrade()?.is_active(),
+            third_into_page: match &self.third_into_page {
+                Some(switch) => switch.upgrade()?.is_active(),
+                None => self.default_third_into_page,
+            },
+            right_handed: match &self.right_handed {
+                Some(switch) => switch.upgrade()?.is_active(),
+                None => self.default_right_handed,
+            },
         })
     }
 
