@@ -9,7 +9,6 @@ use rnote_engine::pens::CoordSystemSettings;
 use rnote_engine::pens::pensconfig::ShaperConfig;
 use rnote_engine::strokes::{AxisEnd, AxisTicks, AxisTicksStyle};
 use std::rc::Rc;
-use tracing::debug;
 
 const POPOVER_NAME: &str = "axis-ticks-popover";
 
@@ -326,7 +325,6 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         #[weak]
         canvas,
         move |popover| {
-            debug!("the coordinate system popup closed");
             let widget_flags = canvas.engine_mut().coord_system_finish();
             appwindow.handle_widget_flags(widget_flags, &canvas);
             // Unparenting inside the signal handler can crash GTK, so defer it
@@ -335,7 +333,6 @@ pub(crate) fn show_axis_ticks_popover(appwindow: &RnAppWindow, canvas: &RnCanvas
         }
     ));
 
-    debug!("the coordinate system popup opens");
     popover.popup();
     count_spin.grab_focus();
 }

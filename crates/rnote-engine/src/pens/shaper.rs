@@ -20,7 +20,6 @@ use rnote_compose::eventresult::{EventPropagation, EventResult};
 use rnote_compose::penevent::{KeyboardKey, ModifierKey, PenEvent, PenProgress};
 use rnote_compose::penpath::Element;
 use std::time::Instant;
-use tracing::debug;
 
 #[derive(Debug)]
 enum ShaperState {
@@ -248,7 +247,6 @@ impl PenBehaviour for Shaper {
     fn deinit(&mut self) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
         if matches!(self.state, ShaperState::EditCoordSystem { .. }) {
-            debug!("the shaper is put away while a coordinate system is being edited");
             self.state = ShaperState::Idle;
             widget_flags.axis_ticks_popup = Some(false);
         }
@@ -275,7 +273,6 @@ impl PenBehaviour for Shaper {
         if matches!(self.state, ShaperState::EditCoordSystem { .. })
             && matches!(event, PenEvent::Down { .. })
         {
-            debug!("a pen press on the canvas ends editing the coordinate system");
             widget_flags |= self.finish_coord_system_edit(engine_view);
         }
 
@@ -463,10 +460,6 @@ impl PenBehaviour for Shaper {
                             if coord_system
                                 && let Some(anchor) = engine_view.store.bounds_for_strokes(&keys)
                             {
-                                debug!(
-                                    strokes = keys.len(),
-                                    "editing a coordinate system that was just drawn"
-                                );
                                 self.state = ShaperState::EditCoordSystem {
                                     keys,
                                     builder_type,
@@ -540,13 +533,8 @@ impl Shaper {
             ..
         } = &mut self.state
         else {
-            debug!("a change from the popup, but no coordinate system is being edited");
             return widget_flags;
         };
-        debug!(
-            strokes = keys.len(),
-            "a change from the popup to the coordinate system"
-        );
         new_settings.count = new_settings
             .count
             .clamp(AxisTicks::COUNT_MIN, AxisTicks::COUNT_MAX);
@@ -590,7 +578,6 @@ impl Shaper {
     pub fn finish_coord_system_edit(&mut self, engine_view: &mut EngineViewMut) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
         if matches!(self.state, ShaperState::EditCoordSystem { .. }) {
-            debug!("editing the coordinate system is finished");
             self.state = ShaperState::Idle;
             widget_flags |= engine_view
                 .store
