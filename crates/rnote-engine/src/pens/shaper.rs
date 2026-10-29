@@ -213,6 +213,9 @@ fn apply_coord_system(
             });
     }
     store.update_geometry_for_strokes(keys);
+    // A rendering still being made in the background is of the strokes as they were. Without this
+    // the strokes would not be rendered again until it is done, which shows them as they were.
+    store.set_rendering_dirty_for_strokes(keys);
 }
 
 fn mean_pressure(sum: f64, count: u32) -> f64 {
