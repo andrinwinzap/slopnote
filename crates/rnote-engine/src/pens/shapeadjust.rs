@@ -7,6 +7,9 @@ use rnote_compose::shapes::{Ellipse, Line, Rectangle, Shape, Shapeable};
 
 /// The extent a shape keeps at least while it is adjusted, so that it can't collapse into nothing.
 const MIN_EXTENT: f64 = 1.0;
+/// How far the pen has to move for the end of a recognized line to reach it, relative to how far
+/// apart they were.
+const LINE_END_CATCH_UP_RATIO: f64 = 3.0;
 
 /// Adjusting a recognized shape with the pen that drew it, while that pen is still down.
 ///
@@ -15,7 +18,8 @@ const MIN_EXTENT: f64 = 1.0;
 /// its radii. Any other shape is scaled between the pen and the corner of its bounds opposite to it.
 ///
 /// The shape follows the movement of the pen since the recognition, so that it does not jump when the pen
-/// does not rest exactly on the part of the shape that follows it.
+/// does not rest exactly on the part of the shape that follows it. The end of a line then also catches up
+/// with the pen.
 #[derive(Debug, Clone)]
 pub(crate) struct ShapeAdjust {
     /// The shape as it was recognized.
@@ -91,10 +95,22 @@ impl ShapeAdjust {
         let offset = pen_pos - self.start_pos;
 
         match (&self.recognized, &self.kind) {
-            (Shape::Line(line), AdjustKind::LineEnd) => Shape::Line(Line {
-                start: line.start,
-                end: line.end + offset,
-            }),
+            (Shape::Line(line), AdjustKind::LineEnd) => {
+                // The recognized line ends on the straightened stroke, which is not quite where
+                // the pen is. The gap closes as the pen moves, until the end is on the pen.
+                let gap = line.end - self.start_pos;
+                let catch_up = gap.length() * LINE_END_CATCH_UP_RATIO;
+                let remaining = if catch_up > f64::EPSILON {
+                    (1.0 - offset.length() / catch_up).max(0.0)
+                } else {
+                    0.0
+                };
+
+                Shape::Line(Line {
+                    start: line.start,
+                    end: pen_pos + gap * remaining,
+                })
+            }
             (Shape::Rectangle(rectangle), AdjustKind::RectangleCorner { corner_signs }) => {
                 let local_offset = rectangle.affine.inverse().transform_vector2(offset);
                 let fixed_corner = -*corner_signs * rectangle.cuboid.half_extents;
@@ -193,6 +209,32 @@ mod tests {
                 assert_eq!(adjusted.end, Vector2::new(160.0, 120.0));
             }
             other => panic!("expected line, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn line_end_catches_up_with_the_pen_without_jumping() {
+        let line = Shape::Line(Line {
+            start: Vector2::new(0.0, 0.0),
+            end: Vector2::new(100.0, 0.0),
+        });
+        // The pen rests 6 away from where the straightened line ends
+        let pen = Vector2::new(100.0, 6.0);
+        let adjust = ShapeAdjust::new(line, pen);
+        let end_at = |pos: Vector2| match adjust.adjusted(pos) {
+            Shape::Line(line) => line.end,
+            other => panic!("expected a line, got {other:?}"),
+        };
+
+        // Not moved: nothing jumps
+        assert!((end_at(pen) - Vector2::new(100.0, 0.0)).length() < 1e-9);
+        // A little: on its way, and closer to the pen
+        let near = pen + Vector2::new(9.0, 0.0);
+        let gap = (end_at(near) - near).length();
+        assert!(0.0 < gap && gap < 6.0, "{gap}");
+        // Further: on the pen, wherever it goes
+        for far in [pen + Vector2::new(18.0, 0.0), Vector2::new(150.0, 40.0)] {
+            assert!((end_at(far) - far).length() < 1e-9);
         }
     }
 
