@@ -726,6 +726,26 @@ impl Brush {
             return widget_flags;
         }
 
+        // Short strokes have to be held for longer, as they could be parts of a letter written
+        // slowly. Check again when the time is up, unless the pen moves on before that.
+        if let Some(Stroke::BrushStroke(brushstroke)) =
+            engine_view.store.get_stroke_ref(current_stroke_key)
+        {
+            let required = hold_duration.mul_f64(shaperecognition::hold_factor(
+                &brushstroke.path,
+                engine_view.camera.total_zoom(),
+            ));
+            let held = self.hold_begin.elapsed();
+            if held < required.mul_f64(0.9) {
+                reset_hold_task(
+                    &mut self.hold_task_handle,
+                    engine_view.tasks_tx.clone(),
+                    required - held,
+                );
+                return widget_flags;
+            }
+        }
+
         let recognized_shape = if let Some(Stroke::BrushStroke(brushstroke)) =
             engine_view.store.get_stroke_ref(current_stroke_key)
         {
@@ -866,7 +886,7 @@ fn reset_hold_task(
     hold_duration: Duration,
 ) {
     if let Some(handle) = handle.as_mut()
-        && handle.reset_timeout().is_ok()
+        && handle.change_and_reset_timeout(hold_duration).is_ok()
     {
         return;
     }

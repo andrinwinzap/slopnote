@@ -18,18 +18,41 @@ pub const HOLD_RADIUS_SURFACE: f64 = 6.0;
 const MIN_EXTENT_SURFACE: f64 = 10.0;
 /// The maximum gap between the endpoints relative to the perimeter for the stroke to be considered closed.
 const CLOSED_GAP_PERIMETER_RATIO: f64 = 0.15;
-/// The maximum deviation of the points from the chord relative to the chord length for a stroke to be a line.
-const LINE_MAX_DEV_CHORD_RATIO: f64 = 0.055;
-/// The maximum stroke length relative to the chord length for a stroke to be a line.
-const LINE_MAX_LEN_CHORD_RATIO: f64 = 1.10;
-/// The deviation from the chord (in surface coordinates) that is tolerated for a line regardless of its length.
+/// The length (in surface coordinates) up to which a stroke is judged as strictly as a short line:
+/// strokes this short are as often parts of letters.
+const LINE_SHORT_SURFACE: f64 = 60.0;
+/// The length (in surface coordinates) from which a stroke is judged as forgivingly as a long line:
+/// the longer a line, the harder it is to draw straight, and the less it can be anything else.
+const LINE_LONG_SURFACE: f64 = 200.0;
+/// The maximum deviation of the points from the line relative to its length, for a short line.
+const LINE_SHORT_MAX_DEV_RATIO: f64 = 0.055;
+/// The maximum deviation of the points from the line relative to its length, for a long line.
+const LINE_LONG_MAX_DEV_RATIO: f64 = 0.08;
+/// How much longer than the distance between its ends a short line can be, relative to that distance.
+const LINE_SHORT_MAX_LEN_EXCESS_RATIO: f64 = 0.10;
+/// How much longer than the distance between its ends a long line can be, relative to that distance.
+const LINE_LONG_MAX_LEN_EXCESS_RATIO: f64 = 0.18;
+/// How much of a long line is left out at each end, relative to its length: pens land and lift with
+/// a little hook, which says nothing about whether the stroke is straight.
+const LINE_LONG_HOOK_RATIO: f64 = 0.06;
+/// The distance (in surface coordinates) between the points the length of a long line is measured
+/// along, so that the tremor of the hand on a slowly drawn line does not add up to any length.
+const LINE_LENGTH_SPACING_SURFACE: f64 = 6.0;
+/// The deviation from the line (in surface coordinates) that is tolerated regardless of the length.
 ///
-/// The tolerances relative to the chord length alone are too strict for short lines like fraction bars,
+/// The tolerances relative to the length alone are too strict for short lines like fraction bars,
 /// where the jitter of the hand is large compared to their length.
 const LINE_MIN_DEV_TOLERANCE_SURFACE: f64 = 2.5;
-/// The excess of the stroke length over the chord length (in surface coordinates)
+/// The excess of the stroke length over the distance between its ends (in surface coordinates)
 /// that is tolerated for a line regardless of its length.
 const LINE_MIN_LEN_EXCESS_TOLERANCE_SURFACE: f64 = 4.0;
+/// How many times as long a stroke no larger than [HOLD_SHORT_SURFACE] has to be held still
+/// for it to be recognized, since it is as likely a part of a letter written slowly.
+const HOLD_SHORT_FACTOR: f64 = 3.0;
+/// The size (in surface coordinates) up to which a stroke has to be held the longest.
+const HOLD_SHORT_SURFACE: f64 = 40.0;
+/// The size (in surface coordinates) from which a stroke only has to be held for the set duration.
+const HOLD_LONG_SURFACE: f64 = 120.0;
 /// The window (in resampled points) used when measuring the turn angle at a point.
 const TURN_WINDOW: usize = 3;
 /// The minimum fraction of the total turning that must be concentrated in high-turn points
@@ -94,6 +117,25 @@ pub fn recognize_shape(path: &PenPath, zoom: f64) -> Option<Shape> {
     } else {
         recognize_line(&input_points, perimeter, zoom)
     }
+}
+
+/// How many times the set duration the pen has to be held still on the given stroke for it to be
+/// recognized.
+///
+/// A slowly written letter pauses for about as long as a line is held, and its strokes look like
+/// short lines. Long strokes are hardly ever letters, so only the short ones have to wait longer.
+pub fn hold_factor(path: &PenPath, zoom: f64) -> f64 {
+    let points = flattened_points(path);
+    if points.is_empty() {
+        return HOLD_SHORT_FACTOR;
+    }
+    let (min, max) = points_bounds(&points);
+    let extents = max - min;
+    let size = extents.x.max(extents.y) * zoom;
+    let long =
+        ((size - HOLD_SHORT_SURFACE) / (HOLD_LONG_SURFACE - HOLD_SHORT_SURFACE)).clamp(0.0, 1.0);
+
+    HOLD_SHORT_FACTOR + (1.0 - HOLD_SHORT_FACTOR) * long
 }
 
 /// The mean width of the stroke as it was drawn, for the width of the shape that replaces it.
@@ -249,31 +291,61 @@ fn resample(points: &[Vector2], n: usize, wrap: bool) -> Vec<Vector2> {
 }
 
 /// Recognize an open stroke as a line.
+///
+/// Short strokes have to be nearly straight, since they could as well be parts of letters. The
+/// longer a stroke, the more forgiving this gets: the hooks at its ends are left out, so that they
+/// do not tilt the line it is measured from, and it may wander further from that line.
 fn recognize_line(points: &[Vector2], perimeter: f64, zoom: f64) -> Option<Shape> {
-    let start = *points.first().unwrap();
-    let end = *points.last().unwrap();
-    let chord = end - start;
-    let chord_len = chord.length();
+    let first = *points.first().unwrap();
+    let last = *points.last().unwrap();
+    let long = (((last - first).length() * zoom - LINE_SHORT_SURFACE)
+        / (LINE_LONG_SURFACE - LINE_SHORT_SURFACE))
+        .clamp(0.0, 1.0);
+    let lerp = |short: f64, long_value: f64| short + (long_value - short) * long;
 
-    let len_excess_tolerance = ((LINE_MAX_LEN_CHORD_RATIO - 1.0) * chord_len)
-        .max(LINE_MIN_LEN_EXCESS_TOLERANCE_SURFACE / zoom);
-    if chord_len < f64::EPSILON || perimeter - chord_len > len_excess_tolerance {
+    let resampled = resample(points, N_RESAMPLE, false);
+    let hook = (resampled.len() as f64 * LINE_LONG_HOOK_RATIO * long).round() as usize;
+    let body = &resampled[hook..resampled.len() - hook];
+    let (body_first, body_last) = (*body.first().unwrap(), *body.last().unwrap());
+    let span = (body_last - body_first).length();
+    if span < f64::EPSILON {
         return None;
     }
 
-    let chord_dir = chord / chord_len;
-    let max_dev = points
-        .iter()
-        .map(|p| chord_dir.perp_dot(*p - start).abs())
-        .fold(0.0, f64::max);
+    // On long strokes measured over points some distance apart, so that the tremor of the hand on a
+    // slowly drawn line does not add up to any length. A stroke that turns back still does.
+    let spacing = lerp(1.0, LINE_LENGTH_SPACING_SURFACE) / zoom;
+    let spaced = resample(
+        body,
+        ((perimeter / spacing).round() as usize).clamp(2, N_RESAMPLE),
+        false,
+    );
+    let len_excess_tolerance = (lerp(
+        LINE_SHORT_MAX_LEN_EXCESS_RATIO,
+        LINE_LONG_MAX_LEN_EXCESS_RATIO,
+    ) * span)
+        .max(LINE_MIN_LEN_EXCESS_TOLERANCE_SURFACE / zoom);
+    if polyline_len(&spaced) - span > len_excess_tolerance {
+        return None;
+    }
 
-    let dev_tolerance =
-        (LINE_MAX_DEV_CHORD_RATIO * chord_len).max(LINE_MIN_DEV_TOLERANCE_SURFACE / zoom);
+    let direction = (body_last - body_first) / span;
+    let max_dev = body
+        .iter()
+        .map(|p| direction.perp_dot(*p - body_first).abs())
+        .fold(0.0, f64::max);
+    let dev_tolerance = (lerp(LINE_SHORT_MAX_DEV_RATIO, LINE_LONG_MAX_DEV_RATIO) * span)
+        .max(LINE_MIN_DEV_TOLERANCE_SURFACE / zoom);
     if max_dev > dev_tolerance {
         return None;
     }
 
-    Some(Shape::Line(Line { start, end }))
+    // The line reaches as far as the stroke did
+    let on_line = |p: Vector2| body_first + direction * direction.dot(p - body_first);
+    Some(Shape::Line(Line {
+        start: on_line(first),
+        end: on_line(last),
+    }))
 }
 
 /// Smooth a closed resampled loop with a cyclic three-point moving average.
@@ -929,5 +1001,79 @@ mod tests {
         });
 
         assert!(recognize_shape(&pen_path_from_points(points), 1.0).is_none());
+    }
+
+    /// A long line as a hand draws it: bowed a little, trembling, with a hook where the pen landed
+    /// and one where it lifted, and then held still.
+    fn crooked_line(length: f64, bow: f64, tremor: f64, hook: f64) -> Vec<Vector2> {
+        let n = (length / 2.0) as usize;
+        let body = (0..=n).map(|i| {
+            let t = i as f64 / n as f64;
+            Vector2::new(
+                100.0 + length * t,
+                200.0 + bow * (t * std::f64::consts::PI).sin(),
+            ) + jitter(i, tremor)
+        });
+        let landing =
+            (0..6).map(|i| Vector2::new(100.0 + i as f64, 200.0 - hook * (1.0 - i as f64 / 6.0)));
+        let lifting = (0..6).map(|i| {
+            Vector2::new(
+                100.0 + length - i as f64,
+                200.0 + hook * (1.0 - i as f64 / 6.0),
+            )
+        });
+        with_resting_tail(
+            landing
+                .chain(body)
+                .chain(lifting.collect::<Vec<_>>().into_iter().rev()),
+        )
+    }
+
+    #[test]
+    fn a_long_crooked_line_is_a_line() {
+        for (length, bow, tremor, hook) in [
+            (300.0, 15.0, 1.5, 8.0),
+            (500.0, 30.0, 1.5, 12.0),
+            (800.0, 45.0, 2.0, 12.0),
+            (300.0, 0.0, 2.5, 0.0),
+        ] {
+            let path = pen_path_from_points(crooked_line(length, bow, tremor, hook));
+            let shape = recognize_shape(&path, 1.0);
+            assert!(
+                matches!(shape, Some(Shape::Line(_))),
+                "{length} long, bowed {bow}: {shape:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_long_arc_is_no_line() {
+        let path = pen_path_from_points(crooked_line(300.0, 60.0, 0.5, 0.0));
+        assert!(recognize_shape(&path, 1.0).is_none());
+    }
+
+    #[test]
+    fn a_line_is_not_tilted_by_its_hooks() {
+        let path = pen_path_from_points(crooked_line(400.0, 0.0, 0.5, 12.0));
+        let Some(Shape::Line(line)) = recognize_shape(&path, 1.0) else {
+            panic!("expected a line");
+        };
+        let tilt = (line.end.y - line.start.y).abs() / (line.end.x - line.start.x).abs();
+        assert!(tilt < 0.01, "tilted by {tilt}");
+    }
+
+    #[test]
+    fn short_strokes_have_to_be_held_longer() {
+        let stroke = |length: f64| {
+            pen_path_from_points(
+                (0..=20).map(move |i| Vector2::new(100.0, 100.0 + length * i as f64 / 20.0)),
+            )
+        };
+        assert_eq!(hold_factor(&stroke(25.0), 1.0), HOLD_SHORT_FACTOR);
+        assert_eq!(hold_factor(&stroke(300.0), 1.0), 1.0);
+        let between = hold_factor(&stroke(80.0), 1.0);
+        assert!(1.0 < between && between < HOLD_SHORT_FACTOR, "{between}");
+        // What counts is how large it is on screen
+        assert_eq!(hold_factor(&stroke(25.0), 8.0), 1.0);
     }
 }
