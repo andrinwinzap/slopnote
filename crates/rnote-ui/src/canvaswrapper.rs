@@ -32,8 +32,6 @@ struct RulerDragBegin {
     turn: RulerTurn,
     /// The line from one finger to the other at the last update, to get at the turn since it.
     last_fingers: Option<Vector2>,
-    /// How many updates the fingers moved the ruler with, for logging.
-    updates: u32,
 }
 
 /// Where the fingers on a gesture are, at the precision the touchscreen reports them.
@@ -281,7 +279,6 @@ fn apply_two_finger_ruler_update(
     );
     // Kept when a finger is not reported for a moment, so the turn picks up from where it was.
     begin.last_fingers = fingers_now.or(begin.last_fingers);
-    begin.updates += 1;
     // The rotation applied to the anchor's offset-from-pivot uses the EFFECTIVE
     // angular change (after snap), not the raw gesture delta, so the anchor
     // tracks the snapped ruler line.
@@ -1035,7 +1032,6 @@ mod imp {
                                     angle_begin,
                                     turn: RulerTurn::new(angle_begin),
                                     last_fingers: finger_line(&touch_points_of(gesture)),
-                                    updates: 0,
                                 }));
                             }
                         }
@@ -1122,7 +1118,6 @@ mod imp {
                     move |gesture, _event_sequence| {
                         debug!(
                             on_the_ruler = ruler_drag.get().is_some(),
-                            ruler_updates = ruler_drag.get().map(|begin| begin.updates),
                             touch_points = gesture.sequences().len(),
                             "two-finger gesture ended"
                         );
@@ -1149,7 +1144,6 @@ mod imp {
                     move |gesture, _event_sequence| {
                         debug!(
                             on_the_ruler = ruler_drag.get().is_some(),
-                            ruler_updates = ruler_drag.get().map(|begin| begin.updates),
                             touch_points = gesture.sequences().len(),
                             "two-finger gesture cancelled"
                         );
