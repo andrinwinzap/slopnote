@@ -14,6 +14,44 @@ use crate::shapes::{
 };
 use kurbo::Shape;
 use p2d::bounding_volume::{Aabb, BoundingVolume};
+use p2d::math::Vector2;
+
+/// How the corners of polygons and polylines are joined: sharp, unless they are so sharp that the
+/// tip would reach too far.
+const MITER_JOIN: piet::LineJoin = piet::LineJoin::Miter {
+    limit: piet::LineJoin::DEFAULT_MITER_LIMIT,
+};
+
+/// The tips of the sharp corners of a stroke through the given points.
+///
+/// They reach further out than half the stroke width, and what is outside of the bounds of a stroke
+/// gets cut off when it is rendered.
+fn miter_tips(points: &[Vector2], closed: bool, stroke_width: f64) -> Vec<Vector2> {
+    let mut points = points.to_vec();
+    points.dedup();
+    if closed && points.len() > 1 && points.first() == points.last() {
+        points.pop();
+    }
+    let n = points.len();
+    if n < 3 {
+        return vec![];
+    }
+    let corners = if closed { 0..n } else { 1..n - 1 };
+
+    corners
+        .filter_map(|i| {
+            let corner = points[i];
+            let to_prev = (points[(i + n - 1) % n] - corner).normalize_or_zero();
+            let to_next = (points[(i + 1) % n] - corner).normalize_or_zero();
+            let half_angle_sin = ((1.0 - to_prev.dot(to_next)) * 0.5).max(0.0).sqrt();
+            let outwards = -(to_prev + to_next).normalize_or_zero();
+            // Past the limit the corner is cut off after all, and with no direction it is straight
+            let ratio = 1.0 / half_angle_sin.max(f64::EPSILON);
+            (ratio <= piet::LineJoin::DEFAULT_MITER_LIMIT && outwards != Vector2::ZERO)
+                .then(|| corner + outwards * stroke_width * 0.5 * ratio)
+        })
+        .collect()
+}
 
 impl Composer<SmoothOptions> for Line {
     fn composed_bounds(&self, options: &SmoothOptions) -> Aabb {
@@ -170,7 +208,15 @@ impl Composer<SmoothOptions> for CubicBezier {
 
 impl Composer<SmoothOptions> for Polyline {
     fn composed_bounds(&self, options: &SmoothOptions) -> Aabb {
-        self.bounds().loosened(options.stroke_width * 0.5)
+        let corners = std::iter::once(self.start)
+            .chain(self.path.iter().copied())
+            .collect::<Vec<Vector2>>();
+        miter_tips(&corners, false, options.stroke_width)
+            .into_iter()
+            .fold(
+                self.bounds().loosened(options.stroke_width * 0.5),
+                |bounds, tip| bounds.merged(&Aabb::new(tip, tip)),
+            )
     }
 
     fn draw_composed(&self, cx: &mut impl piet::RenderContext, options: &SmoothOptions) {
@@ -191,7 +237,7 @@ impl Composer<SmoothOptions> for Polyline {
                 .piet_stroke_style
                 .clone()
                 .line_cap(piet::LineCap::Butt)
-                .line_join(piet::LineJoin::Bevel);
+                .line_join(MITER_JOIN);
             cx.stroke_styled(
                 self.outline_path(),
                 &Into::<piet::Color>::into(color),
@@ -204,7 +250,15 @@ impl Composer<SmoothOptions> for Polyline {
 
 impl Composer<SmoothOptions> for Polygon {
     fn composed_bounds(&self, options: &SmoothOptions) -> Aabb {
-        self.bounds().loosened(options.stroke_width * 0.5)
+        let corners = std::iter::once(self.start)
+            .chain(self.path.iter().copied())
+            .collect::<Vec<Vector2>>();
+        miter_tips(&corners, true, options.stroke_width)
+            .into_iter()
+            .fold(
+                self.bounds().loosened(options.stroke_width * 0.5),
+                |bounds, tip| bounds.merged(&Aabb::new(tip, tip)),
+            )
     }
 
     fn draw_composed(&self, cx: &mut impl piet::RenderContext, options: &SmoothOptions) {
@@ -229,7 +283,7 @@ impl Composer<SmoothOptions> for Polygon {
                 .piet_stroke_style
                 .clone()
                 .line_cap(piet::LineCap::Butt)
-                .line_join(piet::LineJoin::Bevel);
+                .line_join(MITER_JOIN);
 
             cx.stroke_styled(
                 &outline_path,
@@ -489,4 +543,53 @@ fn compose_lines_variable_width(
     bez_path.close_path();
 
     bez_path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounds_reach_the_sharp_tip_of_a_corner() {
+        // A narrow triangle pointing left, with its tip at the origin
+        let triangle = Polygon {
+            start: Vector2::ZERO,
+            path: vec![Vector2::new(100.0, -20.0), Vector2::new(100.0, 20.0)],
+        };
+        let options = SmoothOptions {
+            stroke_width: 10.0,
+            ..Default::default()
+        };
+
+        // Half the angle at the tip has a sine of 20 / sqrt(100^2 + 20^2)
+        let reach = 5.0 * (100.0_f64.powi(2) + 20.0_f64.powi(2)).sqrt() / 20.0;
+        let bounds = triangle.composed_bounds(&options);
+        assert!((bounds.mins.x + reach).abs() < 1e-9, "{:?}", bounds.mins);
+    }
+
+    #[test]
+    fn a_straight_stretch_is_no_corner() {
+        let points = [
+            Vector2::ZERO,
+            Vector2::new(50.0, 0.0),
+            Vector2::new(100.0, 0.0),
+        ];
+        assert!(miter_tips(&points, false, 10.0).is_empty());
+    }
+
+    #[test]
+    fn a_stroke_turning_back_on_itself_has_no_tip() {
+        let points = [Vector2::ZERO, Vector2::new(50.0, 0.0), Vector2::ZERO];
+        assert!(miter_tips(&points, false, 10.0).is_empty());
+    }
+
+    #[test]
+    fn the_ends_of_a_polyline_are_no_corners() {
+        let points = [
+            Vector2::ZERO,
+            Vector2::new(50.0, 0.0),
+            Vector2::new(50.0, 50.0),
+        ];
+        assert_eq!(miter_tips(&points, false, 10.0).len(), 1);
+    }
 }
