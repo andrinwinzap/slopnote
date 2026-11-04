@@ -32,6 +32,8 @@ struct RulerDragBegin {
     turn: RulerTurn,
     /// The line from one finger to the other at the last update, to get at the turn since it.
     last_fingers: Option<Vector2>,
+    /// How many updates the fingers moved the ruler with, for logging.
+    updates: u32,
 }
 
 /// Where the fingers on a gesture are, at the precision the touchscreen reports them.
@@ -279,6 +281,7 @@ fn apply_two_finger_ruler_update(
     );
     // Kept when a finger is not reported for a moment, so the turn picks up from where it was.
     begin.last_fingers = fingers_now.or(begin.last_fingers);
+    begin.updates += 1;
     // The rotation applied to the anchor's offset-from-pivot uses the EFFECTIVE
     // angular change (after snap), not the raw gesture delta, so the anchor
     // tracks the snapped ruler line.
@@ -327,6 +330,8 @@ mod imp {
         /// within `RULER_SCROLL_SESSION_TIMEOUT`. While active, all scroll
         /// events rotate around the locked pivot regardless of pointer position.
         pub(crate) ruler_scroll_session: Cell<Option<ScrollRotationSession>>,
+        /// Whether two fingers are holding the ruler, which then is not a long press.
+        pub(crate) ruler_held: Cell<bool>,
 
         pub(crate) pointer_motion_controller: EventControllerMotion,
         pub(crate) canvas_drag_gesture: GestureDrag,
@@ -442,6 +447,7 @@ mod imp {
                 pointer_pos: Cell::new(None),
                 last_contextmenu_pos: Cell::new(None),
                 ruler_scroll_session: Cell::new(None),
+                ruler_held: Cell::new(false),
 
                 pointer_motion_controller,
                 canvas_drag_gesture,
@@ -964,6 +970,7 @@ mod imp {
                         // All math is in scroller (window-relative) coordinates —
                         // bbcenter is already in that space.
                         ruler_drag.set(None);
+                        canvaswrapper.imp().ruler_held.set(false);
                         let from_touchscreen = gesture
                             .current_event_device()
                             .map(|d| d.source() == gdk::InputSource::Touchscreen)
@@ -1020,6 +1027,7 @@ mod imp {
                                     .brush_config
                                     .ruler_config
                                     .dial_pos = projected_centroid;
+                                canvaswrapper.imp().ruler_held.set(true);
                                 ruler_drag.set(Some(RulerDragBegin {
                                     pivot: projected_centroid,
                                     anchor_begin: anchor_at_begin,
@@ -1027,6 +1035,7 @@ mod imp {
                                     angle_begin,
                                     turn: RulerTurn::new(angle_begin),
                                     last_fingers: finger_line(&touch_points_of(gesture)),
+                                    updates: 0,
                                 }));
                             }
                         }
@@ -1113,12 +1122,14 @@ mod imp {
                     move |gesture, _event_sequence| {
                         debug!(
                             on_the_ruler = ruler_drag.get().is_some(),
+                            ruler_updates = ruler_drag.get().map(|begin| begin.updates),
                             touch_points = gesture.sequences().len(),
                             "two-finger gesture ended"
                         );
                         // workaround for https://gitlab.gnome.org/GNOME/gtk/-/issues/187
                         canvaswrapper.imp().workaround_restore_kinetic_scrolling();
                         ruler_drag.set(None);
+                        canvaswrapper.imp().ruler_held.set(false);
 
                         let widget_flags = canvaswrapper
                             .canvas()
@@ -1138,12 +1149,14 @@ mod imp {
                     move |gesture, _event_sequence| {
                         debug!(
                             on_the_ruler = ruler_drag.get().is_some(),
+                            ruler_updates = ruler_drag.get().map(|begin| begin.updates),
                             touch_points = gesture.sequences().len(),
                             "two-finger gesture cancelled"
                         );
                         // workaround for https://gitlab.gnome.org/GNOME/gtk/-/issues/187
                         canvaswrapper.imp().workaround_restore_kinetic_scrolling();
                         ruler_drag.set(None);
+                        canvaswrapper.imp().ruler_held.set(false);
 
                         let widget_flags = canvaswrapper
                             .canvas()
@@ -1335,6 +1348,11 @@ mod imp {
                         #[weak(rename_to=canvaswrapper)]
                         obj,
                         move |_gesture, _, _| {
+                            // Holding the ruler still is what it is there for, not a shortcut
+                            if canvaswrapper.imp().ruler_held.get() {
+                                debug!("two-finger long press on the ruler, ignored");
+                                return;
+                            }
                             debug!("two-finger long press");
                             let (_, widget_flags) = canvaswrapper
                                 .canvas()
