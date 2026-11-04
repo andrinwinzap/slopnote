@@ -340,9 +340,10 @@ fn recognize_line(points: &[Vector2], perimeter: f64, zoom: f64) -> Option<Shape
         return None;
     }
 
-    // It starts as far back as the stroke did, on the line, and ends where the pen is
+    // The hooks are only left out of judging the stroke: the line starts where the pen landed and
+    // ends where the pen is
     Some(Shape::Line(Line {
-        start: body_first + direction * direction.dot(first - body_first),
+        start: first,
         end: last,
     }))
 }
@@ -1052,14 +1053,13 @@ mod tests {
     }
 
     #[test]
-    fn a_line_starts_past_its_hook_and_ends_on_the_pen() {
-        let points = crooked_line(400.0, 0.0, 0.5, 12.0);
-        let pen = *points.last().unwrap();
+    fn a_line_runs_from_where_the_pen_landed_to_the_pen() {
+        let points = crooked_line(400.0, 10.0, 0.5, 12.0);
+        let (landed, pen) = (points[0], *points.last().unwrap());
         let Some(Shape::Line(line)) = recognize_shape(&pen_path_from_points(points), 1.0) else {
             panic!("expected a line");
         };
-        // Where the pen landed, 12 above the line, does not count
-        assert!((line.start.y - 200.0).abs() < 3.0, "{:?}", line.start);
+        assert!((line.start - landed).length() < 1e-9, "{:?}", line.start);
         assert!((line.end - pen).length() < 1e-9, "{:?}", line.end);
     }
 
