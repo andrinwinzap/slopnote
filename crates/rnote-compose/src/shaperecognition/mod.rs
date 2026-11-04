@@ -340,11 +340,10 @@ fn recognize_line(points: &[Vector2], perimeter: f64, zoom: f64) -> Option<Shape
         return None;
     }
 
-    // The line reaches as far as the stroke did
-    let on_line = |p: Vector2| body_first + direction * direction.dot(p - body_first);
+    // It starts as far back as the stroke did, on the line, and ends where the pen is
     Some(Shape::Line(Line {
-        start: on_line(first),
-        end: on_line(last),
+        start: body_first + direction * direction.dot(first - body_first),
+        end: last,
     }))
 }
 
@@ -1053,13 +1052,15 @@ mod tests {
     }
 
     #[test]
-    fn a_line_is_not_tilted_by_its_hooks() {
-        let path = pen_path_from_points(crooked_line(400.0, 0.0, 0.5, 12.0));
-        let Some(Shape::Line(line)) = recognize_shape(&path, 1.0) else {
+    fn a_line_starts_past_its_hook_and_ends_on_the_pen() {
+        let points = crooked_line(400.0, 0.0, 0.5, 12.0);
+        let pen = *points.last().unwrap();
+        let Some(Shape::Line(line)) = recognize_shape(&pen_path_from_points(points), 1.0) else {
             panic!("expected a line");
         };
-        let tilt = (line.end.y - line.start.y).abs() / (line.end.x - line.start.x).abs();
-        assert!(tilt < 0.01, "tilted by {tilt}");
+        // Where the pen landed, 12 above the line, does not count
+        assert!((line.start.y - 200.0).abs() < 3.0, "{:?}", line.start);
+        assert!((line.end - pen).length() < 1e-9, "{:?}", line.end);
     }
 
     #[test]
