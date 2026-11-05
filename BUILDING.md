@@ -22,8 +22,8 @@ There is a link to the nightly flatpak artifact which you can download.
 Unzip, then install and run the nightly with:
 
 ```bash
-flatpak install --user com.github.flxzt.rnote.Devel.flatpak
-flatpak run com.github.flxzt.rnote.Devel
+flatpak install --user ch.andrinwinzap.Slopnote.Devel.flatpak
+flatpak run ch.andrinwinzap.Slopnote.Devel
 ```
 
 # Just Recipes
@@ -61,7 +61,7 @@ environment.
 
 # Building with Flatpak
 
-There is a flatpak manifest in `build-aux/com.github.flxzt.rnote.Devel.yaml`.
+There is a flatpak manifest in `build-aux/ch.andrinwinzap.Slopnote.Devel.yaml`.
 
 Make sure you have `flatpak` and `flatpak-builder` installed on your system.
 
@@ -111,7 +111,7 @@ If you don't have an IDE or extension to handle building flatpaks, you can also 
 Build and create a local flatpak app repo:
 
 ```bash
-flatpak-builder --user --repo=_flatpak_repo _flatpak_app build-aux/com.github.flxzt.rnote.Devel.yaml
+flatpak-builder --user --repo=_flatpak_repo _flatpak_app build-aux/ch.andrinwinzap.Slopnote.Devel.yaml
 ```
 
 You might have to pass the `--force-clean` flag as well to clean previous builds.
@@ -121,7 +121,7 @@ You might have to pass the `--force-clean` flag as well to clean previous builds
 Install to the system as user with:
 
 ```bash
-flatpak-builder --user --install _flatpak_app build-aux/com.github.flxzt.rnote.Devel.yaml
+flatpak-builder --user --install _flatpak_app build-aux/ch.andrinwinzap.Slopnote.Devel.yaml
 ```
 
 ### Run
@@ -129,7 +129,7 @@ flatpak-builder --user --install _flatpak_app build-aux/com.github.flxzt.rnote.D
 Then it can be run. From the build directory:
 
 ```bash
-flatpak-builder --run _flatpak_app build-aux/com.github.flxzt.rnote.Devel.yaml rnote
+flatpak-builder --run _flatpak_app build-aux/ch.andrinwinzap.Slopnote.Devel.yaml rnote
 ```
 
 Or if it is installed:
@@ -145,15 +145,15 @@ Alternatively after building and creating the local repo you can also create a s
 ```bash
 flatpak build-bundle \
     _flatpak_repo \
-    com.github.flxzt.rnote.Devel.flatpak \
-    com.github.flxzt.rnote.Devel \
+    ch.andrinwinzap.Slopnote.Devel.flatpak \
+    ch.andrinwinzap.Slopnote.Devel \
     --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 ```
 
 And install with:
 
 ```bash
-flatpak install com.github.flxzt.rnote.Devel.flatpak
+flatpak install ch.andrinwinzap.Slopnote.Devel.flatpak
 ```
 
 # Build with Meson

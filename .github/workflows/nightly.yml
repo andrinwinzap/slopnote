@@ -22,8 +22,8 @@ jobs:
       - name: Build nightly flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb
         with:
-          manifest-path: build-aux/com.github.flxzt.rnote.Devel.yaml
+          manifest-path: build-aux/ch.andrinwinzap.Slopnote.Devel.yaml
           cache-key: flatpak-builder-${{ github.sha }}
           arch: x86_64
           build-bundle: true
-          bundle: com.github.flxzt.rnote.Devel.flatpak
+          bundle: ch.andrinwinzap.Slopnote.Devel.flatpak
