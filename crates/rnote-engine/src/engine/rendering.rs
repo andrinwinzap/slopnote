@@ -246,13 +246,11 @@ impl Engine {
             .ruler_config
             .visible
         {
-            let total_zoom = self.camera.total_zoom();
-            let camera_offset = self.camera.offset();
-            // The zoom is positive, so the corners stay ordered.
-            let visible_doc = Aabb::new(
-                (visible_bounds.mins + camera_offset) / total_zoom,
-                (visible_bounds.maxs + camera_offset) / total_zoom,
-            );
+            let visible_doc = self
+                .camera
+                .transform()
+                .inverse()
+                .transform_aabb(visible_bounds);
 
             snapshot.save();
             let cairo_cx = snapshot.append_cairo(&graphene::Rect::from_p2d_aabb(visible_bounds));

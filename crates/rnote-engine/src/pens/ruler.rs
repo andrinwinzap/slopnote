@@ -75,8 +75,9 @@ pub fn draw_ruler_on_doc(
     let total_zoom = view.total_zoom();
     let dark_mode = RulerConfig::dark_mode_for_background(background_color);
     let anchor_doc = ruler.anchor_doc(view);
-    let dir = ruler.direction();
-    let normal = ruler.normal();
+    // The ruler's angle is on screen, and this draws in document coordinates.
+    let dir = view.direction_to_doc(ruler.direction());
+    let normal = view.direction_to_doc(ruler.normal());
     let half_w = ruler.body_half_width_doc(total_zoom);
     let Some((min_t, max_t)) = viewport_t_range(anchor_doc, dir, half_w, visible_doc) else {
         return Ok(());
@@ -147,7 +148,14 @@ pub fn draw_ruler_on_doc(
     }
 
     if ruler.show_dial {
-        draw_angle_dial(cx, ruler, ruler.dial_pos_doc(view), total_zoom, dark_mode)?;
+        draw_angle_dial(
+            cx,
+            ruler,
+            ruler.dial_pos_doc(view),
+            total_zoom,
+            view.rotation(),
+            dark_mode,
+        )?;
     }
 
     cx.restore().map_err(|e| anyhow::anyhow!("{e:?}"))?;
@@ -159,6 +167,7 @@ fn draw_angle_dial(
     ruler: &RulerConfig,
     dial_pos_doc: Vector2,
     total_zoom: f64,
+    rotation: f64,
     dark_mode: bool,
 ) -> anyhow::Result<()> {
     let outer_r = RulerConfig::DIAL_OUTER_RADIUS_PX / total_zoom;
@@ -171,6 +180,7 @@ fn draw_angle_dial(
     // ruler), so they serve as a fixed reference for reading rotation.
     cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
     cx.transform(kurbo::Affine::translate(dial_pos_doc.to_kurbo_vec()));
+    cx.transform(kurbo::Affine::rotate(-rotation));
 
     let n_ticks = (360.0 / DIAL_MINOR_TICK_STEP_DEG).round() as i32;
     for i in 0..n_ticks {
@@ -193,6 +203,7 @@ fn draw_angle_dial(
     // current angle on the fixed dial.
     cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
     cx.transform(kurbo::Affine::translate(dial_pos_doc.to_kurbo_vec()));
+    cx.transform(kurbo::Affine::rotate(-rotation));
     cx.transform(kurbo::Affine::rotate(ruler.angle));
     for sign in [1.0_f64, -1.0_f64] {
         let tip = kurbo::Point::new(sign * (outer_r - major_len - indicator_size * 0.2), 0.0);
@@ -240,6 +251,7 @@ fn draw_angle_dial(
     let text_size = layout.size();
     cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
     cx.transform(kurbo::Affine::translate(dial_pos_doc.to_kurbo_vec()));
+    cx.transform(kurbo::Affine::rotate(-rotation));
     cx.transform(kurbo::Affine::scale(1.0 / total_zoom));
     cx.draw_text(
         &layout,

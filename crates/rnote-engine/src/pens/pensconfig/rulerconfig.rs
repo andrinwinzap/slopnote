@@ -14,6 +14,8 @@ pub struct RulerView {
     surface_origin: Vector2,
     camera_offset: Vector2,
     total_zoom: f64,
+    /// The camera rotation in radians. The ruler stays put on screen when the canvas turns too.
+    rotation: f64,
 }
 
 impl RulerView {
@@ -22,6 +24,7 @@ impl RulerView {
             surface_origin: camera.surface_origin(),
             camera_offset: camera.offset(),
             total_zoom: camera.total_zoom(),
+            rotation: camera.rotation(),
         }
     }
 
@@ -29,14 +32,26 @@ impl RulerView {
         self.total_zoom
     }
 
+    /// The camera rotation in radians.
+    pub fn rotation(&self) -> f64 {
+        self.rotation
+    }
+
+    /// Convert a direction from window coordinates to document coordinates.
+    pub fn direction_to_doc(&self, window_dir: Vector2) -> Vector2 {
+        Vector2::from_angle(-self.rotation).rotate(window_dir)
+    }
+
     /// Convert a position from window coordinates to document coordinates.
     pub fn to_doc(&self, window_pos: Vector2) -> Vector2 {
-        (window_pos - self.surface_origin + self.camera_offset) / self.total_zoom
+        self.direction_to_doc(window_pos - self.surface_origin + self.camera_offset)
+            / self.total_zoom
     }
 
     /// Convert a position from document coordinates to window coordinates.
     pub fn from_doc(&self, doc_pos: Vector2) -> Vector2 {
-        doc_pos * self.total_zoom - self.camera_offset + self.surface_origin
+        Vector2::from_angle(self.rotation).rotate(doc_pos) * self.total_zoom - self.camera_offset
+            + self.surface_origin
     }
 }
 
@@ -538,7 +553,34 @@ mod tests {
             surface_origin,
             camera_offset: Vector2::new(40.0, 25.0),
             total_zoom,
+            rotation: 0.0,
         }
+    }
+
+    #[test]
+    fn conversions_are_inverse_when_the_canvas_is_rotated() {
+        let view = RulerView {
+            rotation: 0.7,
+            ..view(2.5, Vector2::new(120.0, 0.0))
+        };
+        let window_pos = Vector2::new(310.0, 180.0);
+
+        assert!((view.from_doc(view.to_doc(window_pos)) - window_pos).length() < 1e-9);
+    }
+
+    #[test]
+    fn project_to_edge_lands_on_the_edge_when_the_canvas_is_rotated() {
+        let ruler = horizontal_ruler();
+        let view = RulerView {
+            rotation: 0.7,
+            ..view(2.5, Vector2::new(120.0, 0.0))
+        };
+        let pos_window = Vector2::new(320.0, 190.0);
+
+        let projected = view.from_doc(ruler.project_to_edge(view.to_doc(pos_window), 1.0, view));
+
+        assert!((projected.x - pos_window.x).abs() < 1e-9);
+        assert!((ruler.perp_distance(projected) - ruler.body_half_width).abs() < 1e-9);
     }
 
     #[test]
