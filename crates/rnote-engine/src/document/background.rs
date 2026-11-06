@@ -500,7 +500,49 @@ impl Background {
         with_pattern: bool,
         optimize_printing: bool,
     ) -> anyhow::Result<()> {
+        // Rendering the pattern of large bounds through rsvg is slow, so for raster targets only a
+        // tile is rendered and then repeated. Vector targets (Pdf, Svg exports) keep the full svg.
+        if with_pattern
+            && self.pattern != PatternStyle::None
+            && cx.target().type_() == cairo::SurfaceType::Image
+        {
+            return self.draw_tiled_to_cairo(cx, bounds, optimize_printing);
+        }
         self.gen_svg(bounds, with_pattern, optimize_printing)?
             .draw_to_cairo(cx)
+    }
+
+    /// Draw the background by repeating a tile of it, which is aligned to the document origin
+    /// like the svg pattern.
+    fn draw_tiled_to_cairo(
+        &self,
+        cx: &cairo::Context,
+        bounds: Aabb,
+        optimize_printing: bool,
+    ) -> anyhow::Result<()> {
+        let tile_size = self.tile_size();
+        let tile = cairo::RecordingSurface::create(
+            cairo::Content::ColorAlpha,
+            Some(cairo::Rectangle::new(0.0, 0.0, tile_size[0], tile_size[1])),
+        )?;
+        {
+            let tile_cx = cairo::Context::new(&tile)?;
+            self.gen_svg(Aabb::new(Vector2::ZERO, tile_size), true, optimize_printing)?
+                .draw_to_cairo(&tile_cx)?;
+        }
+        let pattern = cairo::SurfacePattern::create(&tile);
+        pattern.set_extend(cairo::Extend::Repeat);
+
+        cx.save()?;
+        cx.rectangle(
+            bounds.mins[0],
+            bounds.mins[1],
+            bounds.extents()[0],
+            bounds.extents()[1],
+        );
+        cx.set_source(&pattern)?;
+        cx.fill()?;
+        cx.restore()?;
+        Ok(())
     }
 }
