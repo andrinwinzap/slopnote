@@ -289,6 +289,25 @@ impl RnAppWindow {
         self.imp().bookmarks_panel.get()
     }
 
+    /// Show the bookmarks panel on the left (`true`) or right side of the canvas.
+    pub(crate) fn set_bookmarks_panel_left(&self, left: bool) {
+        let imp = self.imp();
+        let revealer = imp.bookmarks_revealer.get();
+        let separator = imp.bookmarks_separator.get();
+        let revealer_box = imp.bookmarks_revealer_box.get();
+        if left {
+            imp.canvas_box
+                .reorder_child_after(&revealer, None::<&gtk4::Widget>);
+            revealer.set_transition_type(gtk4::RevealerTransitionType::SlideRight);
+            revealer_box.reorder_child_after(&separator, Some(&imp.bookmarks_panel.get()));
+        } else {
+            imp.canvas_box
+                .reorder_child_after(&revealer, Some(&imp.overlays.get()));
+            revealer.set_transition_type(gtk4::RevealerTransitionType::SlideLeft);
+            revealer_box.reorder_child_after(&separator, None::<&gtk4::Widget>);
+        }
+    }
+
     /// Must be called after application is associated with the window else the init will panic
     pub(crate) fn init(&self, add_initial_tab: bool) {
         let imp = self.imp();
@@ -296,6 +315,17 @@ impl RnAppWindow {
         imp.overlays.get().init(self);
         imp.sidebar.get().init(self);
         imp.bookmarks_panel.get().init(self);
+        let side_row = imp
+            .sidebar
+            .get()
+            .settings_panel()
+            .general_bookmarks_panel_side_row();
+        side_row.connect_selected_notify(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |row| appwindow.set_bookmarks_panel_left(row.selected() == 0)
+        ));
+        self.set_bookmarks_panel_left(side_row.selected() == 0);
         imp.main_header.get().init(self);
 
         // actions and settings AFTER widget inits

@@ -41,7 +41,7 @@
                       </object>
                     </child>
                     <child>
-                      <object class="GtkBox">
+                      <object class="GtkBox" id="canvas_box">
                         <property name="orientation">horizontal</property>
                         <child>
                           <object class="RnOverlays" id="overlays">
@@ -54,10 +54,10 @@
                             <property name="transition-type">slide-left</property>
                             <property name="reveal-child">false</property>
                             <child>
-                              <object class="GtkBox">
+                              <object class="GtkBox" id="bookmarks_revealer_box">
                                 <property name="orientation">horizontal</property>
                                 <child>
-                                  <object class="GtkSeparator">
+                                  <object class="GtkSeparator" id="bookmarks_separator">
                                     <property name="orientation">vertical</property>
                                   </object>
                                 </child>

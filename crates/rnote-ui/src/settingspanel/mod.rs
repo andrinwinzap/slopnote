@@ -60,6 +60,8 @@ mod imp {
         #[template_child]
         pub(crate) general_hide_pen_cursor_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub(crate) general_bookmarks_panel_side_row: TemplateChild<adw::ComboRow>,
+        #[template_child]
         pub(crate) general_hide_eraser_square_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub(crate) general_drawing_cursor_picker_row: TemplateChild<adw::ActionRow>,
@@ -399,6 +401,10 @@ impl RnSettingsPanel {
 
     pub(crate) fn general_show_drawing_cursor_row(&self) -> adw::SwitchRow {
         self.imp().general_show_drawing_cursor_row.clone()
+    }
+
+    pub(crate) fn general_bookmarks_panel_side_row(&self) -> adw::ComboRow {
+        self.imp().general_bookmarks_panel_side_row.clone()
     }
 
     pub(crate) fn general_hide_pen_cursor_row(&self) -> adw::SwitchRow {

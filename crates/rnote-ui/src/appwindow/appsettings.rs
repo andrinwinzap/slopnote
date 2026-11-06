@@ -166,6 +166,27 @@ impl RnAppWindow {
             .get_no_changes()
             .build();
 
+        // bookmarks panel side
+        app_settings
+            .bind(
+                "bookmarks-panel-side",
+                &self
+                    .sidebar()
+                    .settings_panel()
+                    .general_bookmarks_panel_side_row(),
+                "selected",
+            )
+            .mapping(|var, _| {
+                let side = var.get::<String>()?;
+                Some((if side == "left" { 0u32 } else { 1u32 }).to_value())
+            })
+            .set_mapping(|val, _| {
+                let selected = val.get::<u32>().ok()?;
+                Some((if selected == 0 { "left" } else { "right" }).to_variant())
+            })
+            .get_no_changes()
+            .build();
+
         // hide eraser square
         app_settings
             .bind(

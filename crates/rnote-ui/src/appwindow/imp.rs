@@ -59,7 +59,13 @@ pub(crate) struct RnAppWindow {
     #[template_child]
     pub(crate) overlays: TemplateChild<RnOverlays>,
     #[template_child]
+    pub(crate) canvas_box: TemplateChild<gtk4::Box>,
+    #[template_child]
     pub(crate) bookmarks_revealer: TemplateChild<gtk4::Revealer>,
+    #[template_child]
+    pub(crate) bookmarks_revealer_box: TemplateChild<gtk4::Box>,
+    #[template_child]
+    pub(crate) bookmarks_separator: TemplateChild<gtk4::Separator>,
     #[template_child]
     pub(crate) bookmarks_panel: TemplateChild<RnBookmarksPanel>,
 }
@@ -102,7 +108,10 @@ impl Default for RnAppWindow {
             sidebar: TemplateChild::<RnSidebar>::default(),
             tabbar: TemplateChild::<adw::TabBar>::default(),
             overlays: TemplateChild::<RnOverlays>::default(),
+            canvas_box: TemplateChild::<gtk4::Box>::default(),
             bookmarks_revealer: TemplateChild::<gtk4::Revealer>::default(),
+            bookmarks_revealer_box: TemplateChild::<gtk4::Box>::default(),
+            bookmarks_separator: TemplateChild::<gtk4::Separator>::default(),
             bookmarks_panel: TemplateChild::<RnBookmarksPanel>::default(),
         }
     }

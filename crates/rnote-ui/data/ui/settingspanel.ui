@@ -135,6 +135,21 @@ gets disabled.</property>
                       </object>
                     </child>
                     <child>
+                      <object class="AdwComboRow" id="general_bookmarks_panel_side_row">
+                        <property name="title" translatable="yes">Bookmarks Panel Side</property>
+                        <property name="subtitle" translatable="yes">The side of the canvas the bookmarks panel is shown on</property>
+                        <property name="model">
+                          <object class="GtkStringList">
+                            <items>
+                              <item translatable="yes">Left</item>
+                              <item translatable="yes">Right</item>
+                            </items>
+                          </object>
+                        </property>
+                        <property name="selected">1</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwActionRow" id="general_drawing_cursor_picker_row">
                         <property name="title" translatable="yes">Drawing Cursor</property>
                         <property name="subtitle" translatable="yes">Set the drawing cursor</property>
