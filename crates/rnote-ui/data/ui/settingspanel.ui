@@ -60,6 +60,22 @@
                       </object>
                     </child>
                     <child>
+                      <object class="AdwSpinRow" id="general_rotation_level_snap_row">
+                        <property name="title" translatable="yes">Rotation Snap to Level (degrees)</property>
+                        <property name="subtitle" translatable="yes">Set how close to level the canvas has to be turned to snap to level</property>
+                        <property name="adjustment">general_rotation_level_snap_adj</property>
+                        <property name="digits">1</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwSpinRow" id="general_zoom_lock_threshold_row">
+                        <property name="title" translatable="yes">Pinch Needed to Zoom (percent)</property>
+                        <property name="subtitle" translatable="yes">Set how far to pinch before a two-finger gesture zooms, when it can either zoom or rotate</property>
+                        <property name="adjustment">general_zoom_lock_threshold_adj</property>
+                        <property name="digits">0</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwSwitchRow" id="general_optimize_epd_row">
                         <property name="title" translatable="yes">Optimize for E-Paper Displays</property>
                         <property name="subtitle" translatable="yes">Changes certain UI elements and modifies behaviour
@@ -646,6 +662,20 @@ on a drawing pad</property>
       <property name="upper">5000</property>
       <property name="lower">1</property>
       <property name="value">96</property>
+    </object>
+    <object class="GtkAdjustment" id="general_zoom_lock_threshold_adj">
+      <property name="lower">2</property>
+      <property name="upper">100</property>
+      <property name="step-increment">1</property>
+      <property name="page-increment">10</property>
+      <property name="value">20</property>
+    </object>
+    <object class="GtkAdjustment" id="general_rotation_level_snap_adj">
+      <property name="lower">1</property>
+      <property name="upper">30</property>
+      <property name="step-increment">0.5</property>
+      <property name="page-increment">5</property>
+      <property name="value">3</property>
     </object>
     <object class="GtkAdjustment" id="general_autosave_interval_secs_adj">
       <property name="step-increment">1</property>

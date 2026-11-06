@@ -34,6 +34,14 @@ glib::wrapper! {
 }
 
 impl RnAppWindow {
+    /// Below this the canvas is not left at small angles, which GTK renders badly.
+    pub(crate) const ROTATION_LEVEL_SNAP_MIN: f64 = 1.0;
+    pub(crate) const ROTATION_LEVEL_SNAP_MAX: f64 = 30.0;
+    pub(crate) const ROTATION_LEVEL_SNAP_DEFAULT: f64 = 3.0;
+    pub(crate) const ZOOM_LOCK_THRESHOLD_MIN: f64 = 2.0;
+    pub(crate) const ZOOM_LOCK_THRESHOLD_MAX: f64 = 100.0;
+    pub(crate) const ZOOM_LOCK_THRESHOLD_DEFAULT: f64 = 20.0;
+
     const AUTOSAVE_INTERVAL_DEFAULT: u32 = 30;
     const PERIODIC_CONFIGSAVE_INTERVAL: u32 = 10;
 
@@ -157,6 +165,26 @@ impl RnAppWindow {
     #[allow(unused)]
     pub(crate) fn set_block_pinch_zoom(&self, block_pinch_zoom: bool) {
         self.set_property("block-pinch-zoom", block_pinch_zoom.to_value());
+    }
+
+    #[allow(unused)]
+    pub(crate) fn canvas_rotation(&self) -> bool {
+        self.property::<bool>("canvas-rotation")
+    }
+
+    #[allow(unused)]
+    pub(crate) fn exclusive_zoom_rotation(&self) -> bool {
+        self.property::<bool>("exclusive-zoom-rotation")
+    }
+
+    /// How far to pinch for a two-finger gesture to settle on zooming, in percent.
+    pub(crate) fn zoom_lock_threshold(&self) -> f64 {
+        self.property::<f64>("zoom-lock-threshold")
+    }
+
+    /// How close to level the rotation has to be to snap to level, in radians.
+    pub(crate) fn rotation_level_snap_radians(&self) -> f64 {
+        self.property::<f64>("rotation-level-snap").to_radians()
     }
 
     #[allow(unused)]

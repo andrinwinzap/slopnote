@@ -27,6 +27,10 @@ pub(crate) struct RnAppWindow {
     pub(crate) righthanded: Cell<bool>,
     pub(crate) block_pinch_zoom: Cell<bool>,
     pub(crate) respect_borders: Cell<bool>,
+    pub(crate) canvas_rotation: Cell<bool>,
+    pub(crate) exclusive_zoom_rotation: Cell<bool>,
+    pub(crate) rotation_level_snap: Cell<f64>,
+    pub(crate) zoom_lock_threshold: Cell<f64>,
     pub(crate) touch_drawing: Cell<bool>,
     pub(crate) focus_mode: Cell<bool>,
     pub(crate) devel_mode: Cell<bool>,
@@ -69,6 +73,10 @@ impl Default for RnAppWindow {
             righthanded: Cell::new(true),
             block_pinch_zoom: Cell::new(false),
             respect_borders: Cell::new(false),
+            canvas_rotation: Cell::new(true),
+            exclusive_zoom_rotation: Cell::new(true),
+            rotation_level_snap: Cell::new(super::RnAppWindow::ROTATION_LEVEL_SNAP_DEFAULT),
+            zoom_lock_threshold: Cell::new(super::RnAppWindow::ZOOM_LOCK_THRESHOLD_DEFAULT),
             touch_drawing: Cell::new(false),
             focus_mode: Cell::new(false),
             devel_mode: Cell::new(false),
@@ -184,6 +192,22 @@ impl ObjectImpl for RnAppWindow {
                 glib::ParamSpecBoolean::builder("respect-borders")
                     .default_value(false)
                     .build(),
+                glib::ParamSpecBoolean::builder("canvas-rotation")
+                    .default_value(true)
+                    .build(),
+                glib::ParamSpecBoolean::builder("exclusive-zoom-rotation")
+                    .default_value(true)
+                    .build(),
+                glib::ParamSpecDouble::builder("zoom-lock-threshold")
+                    .minimum(super::RnAppWindow::ZOOM_LOCK_THRESHOLD_MIN)
+                    .maximum(super::RnAppWindow::ZOOM_LOCK_THRESHOLD_MAX)
+                    .default_value(super::RnAppWindow::ZOOM_LOCK_THRESHOLD_DEFAULT)
+                    .build(),
+                glib::ParamSpecDouble::builder("rotation-level-snap")
+                    .minimum(super::RnAppWindow::ROTATION_LEVEL_SNAP_MIN)
+                    .maximum(super::RnAppWindow::ROTATION_LEVEL_SNAP_MAX)
+                    .default_value(super::RnAppWindow::ROTATION_LEVEL_SNAP_DEFAULT)
+                    .build(),
                 glib::ParamSpecBoolean::builder("touch-drawing")
                     .default_value(false)
                     .build(),
@@ -220,6 +244,10 @@ impl ObjectImpl for RnAppWindow {
             "righthanded" => self.righthanded.get().to_value(),
             "block-pinch-zoom" => self.block_pinch_zoom.get().to_value(),
             "respect-borders" => self.respect_borders.get().to_value(),
+            "canvas-rotation" => self.canvas_rotation.get().to_value(),
+            "exclusive-zoom-rotation" => self.exclusive_zoom_rotation.get().to_value(),
+            "rotation-level-snap" => self.rotation_level_snap.get().to_value(),
+            "zoom-lock-threshold" => self.zoom_lock_threshold.get().to_value(),
             "touch-drawing" => self.touch_drawing.get().to_value(),
             "focus-mode" => self.focus_mode.get().to_value(),
             "devel-mode" => self.devel_mode.get().to_value(),
@@ -310,6 +338,27 @@ impl ObjectImpl for RnAppWindow {
                 let respect_borders: bool =
                     value.get().expect("The value needs to be of type `bool`");
                 self.respect_borders.replace(respect_borders);
+            }
+            "canvas-rotation" => {
+                let canvas_rotation: bool =
+                    value.get().expect("The value needs to be of type `bool`");
+                self.canvas_rotation.replace(canvas_rotation);
+            }
+            "exclusive-zoom-rotation" => {
+                let exclusive_zoom_rotation: bool =
+                    value.get().expect("The value needs to be of type `bool`");
+                self.exclusive_zoom_rotation
+                    .replace(exclusive_zoom_rotation);
+            }
+            "zoom-lock-threshold" => {
+                let zoom_lock_threshold: f64 =
+                    value.get().expect("The value needs to be of type `f64`");
+                self.zoom_lock_threshold.replace(zoom_lock_threshold);
+            }
+            "rotation-level-snap" => {
+                let rotation_level_snap: f64 =
+                    value.get().expect("The value needs to be of type `f64`");
+                self.rotation_level_snap.replace(rotation_level_snap);
             }
             "touch-drawing" => {
                 let touch_drawing: bool =

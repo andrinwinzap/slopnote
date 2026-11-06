@@ -39,6 +39,12 @@ pub struct Camera {
     /// The camera rotation in radians.
     #[serde(skip)]
     rotation: f64,
+    /// The rotation that was asked for, before snapping.
+    ///
+    /// Further turns start from this, so that a turn smaller than the snap distance adds up
+    /// and gets away from the angle it is snapped to.
+    #[serde(skip)]
+    rotation_unsnapped: f64,
     /// The temporary zoom. Is used to overlay the "permanent" zoom.
     #[serde(skip)]
     temporary_zoom: f64,
@@ -69,6 +75,7 @@ impl Default for Camera {
             size: Vector2::new(800.0, 600.0),
             zoom: 1.0,
             rotation: 0.0,
+            rotation_unsnapped: 0.0,
             temporary_zoom: 1.0,
             surface_origin: Vector2::ZERO,
             scale_factor: 1.0,
@@ -84,6 +91,7 @@ impl Snapshotable for Camera {
             size: self.size,
             zoom: self.zoom,
             rotation: self.rotation,
+            rotation_unsnapped: self.rotation_unsnapped,
             ..Default::default()
         }
     }
@@ -116,6 +124,7 @@ impl Camera {
 
     pub fn with_rotation(mut self, rotation: f64) -> Self {
         self.rotation = rotation;
+        self.rotation_unsnapped = rotation;
         self
     }
 
@@ -220,18 +229,34 @@ impl Camera {
         }
     }
 
+    /// The rotation in radians before snapping, which further turns should start from.
+    pub fn rotation_unsnapped(&self) -> f64 {
+        self.rotation_unsnapped
+    }
+
     /// Normalizes angle to (-pi, pi].
-    fn normalize_angle(angle: f64) -> f64 {
+    pub fn normalize_angle(angle: f64) -> f64 {
         std::f64::consts::PI - (std::f64::consts::PI - angle).rem_euclid(std::f64::consts::TAU)
     }
 
-    pub fn set_rotation(&mut self, rotation: f64) -> WidgetFlags {
+    /// Set the rotation in radians.
+    ///
+    /// `level_snap` is how close to level, in radians, the rotation has to be to snap to zero.
+    pub fn set_rotation(&mut self, rotation: f64, level_snap: f64) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
+
+        let rotation = Self::normalize_angle(rotation);
+        self.rotation_unsnapped = rotation;
 
         // snap angle to nearest 45 degrees and normalize it
         // angle must not be close to zero, because it causes major rendering issues in GTK
-        self.rotation =
+        let snapped =
             Self::normalize_angle(Self::snap_angle(rotation, std::f64::consts::FRAC_PI_4));
+        self.rotation = if snapped.abs() <= level_snap {
+            0.0
+        } else {
+            snapped
+        };
 
         widget_flags.view_modified = true;
         widget_flags.resize = true;
@@ -463,6 +488,37 @@ mod tests {
             camera.transform().transform_point2(p0),
             (p0 * zoom) - offset
         );
+    }
+
+    #[test]
+    fn rotation_snaps_to_level_within_the_given_distance() {
+        let snap = 3_f64.to_radians();
+        let mut camera = Camera::default();
+
+        for (degrees, expected) in [(2.9, 0.0), (-2.9, 0.0), (3.1, 3.1), (-3.1, -3.1)] {
+            let _ = camera.set_rotation(f64::to_radians(degrees), snap);
+            assert_relative_eq!(camera.rotation().to_degrees(), expected, epsilon = 1e-9);
+        }
+
+        // Only level snaps this far: other angles keep the small snap to 45 degree steps.
+        let _ = camera.set_rotation(f64::to_radians(178.0), snap);
+        assert_relative_eq!(camera.rotation().to_degrees(), 178.0, epsilon = 1e-9);
+        let _ = camera.set_rotation(f64::to_radians(45.5), snap);
+        assert_relative_eq!(camera.rotation().to_degrees(), 45.0, epsilon = 1e-9);
+    }
+
+    #[test]
+    fn small_turns_add_up_past_the_level_snap() {
+        let snap = 10_f64.to_radians();
+        let step = 5_f64.to_radians();
+        let mut camera = Camera::default();
+
+        let _ = camera.set_rotation(camera.rotation_unsnapped() + step, snap);
+        assert_relative_eq!(camera.rotation(), 0.0);
+
+        let _ = camera.set_rotation(camera.rotation_unsnapped() + step, snap);
+        let _ = camera.set_rotation(camera.rotation_unsnapped() + step, snap);
+        assert_relative_eq!(camera.rotation().to_degrees(), 15.0, epsilon = 1e-9);
     }
 
     #[test]

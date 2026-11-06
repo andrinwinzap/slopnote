@@ -48,6 +48,10 @@ mod imp {
         #[template_child]
         pub(crate) general_inertial_scrolling_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub(crate) general_rotation_level_snap_row: TemplateChild<adw::SpinRow>,
+        #[template_child]
+        pub(crate) general_zoom_lock_threshold_row: TemplateChild<adw::SpinRow>,
+        #[template_child]
         pub(crate) general_regular_cursor_picker: TemplateChild<RnIconPicker>,
         #[template_child]
         pub(crate) general_regular_cursor_picker_menubutton: TemplateChild<MenuButton>,
@@ -589,6 +593,38 @@ impl RnSettingsPanel {
             .bind_property(
                 "active",
                 &*imp.general_autosave_interval_secs_row,
+                "sensitive",
+            )
+            .sync_create()
+            .build();
+
+        imp.general_zoom_lock_threshold_row
+            .get()
+            .bind_property("value", appwindow, "zoom-lock-threshold")
+            .sync_create()
+            .bidirectional()
+            .build();
+
+        appwindow
+            .bind_property(
+                "exclusive-zoom-rotation",
+                &*imp.general_zoom_lock_threshold_row,
+                "sensitive",
+            )
+            .sync_create()
+            .build();
+
+        imp.general_rotation_level_snap_row
+            .get()
+            .bind_property("value", appwindow, "rotation-level-snap")
+            .sync_create()
+            .bidirectional()
+            .build();
+
+        appwindow
+            .bind_property(
+                "canvas-rotation",
+                &*imp.general_rotation_level_snap_row,
                 "sensitive",
             )
             .sync_create()

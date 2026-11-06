@@ -644,7 +644,7 @@ impl Engine {
                 -Document::SHADOW_WIDTH * zoom,
             )
         };
-        self.camera_set_rotation(0.0) | self.camera_set_offset_expand(new_offset)
+        self.camera_set_rotation(0.0, 0.0) | self.camera_set_offset_expand(new_offset)
     }
 
     /// Resize the doc when in autoexpanding layouts. called e.g. when finishing a new stroke.
@@ -724,8 +724,10 @@ impl Engine {
     /// Update the viewport rotation of the camera.
     ///
     /// Background and content rendering then need to be updated.
-    pub fn camera_set_rotation(&mut self, rotation: f64) -> WidgetFlags {
-        self.camera.set_rotation(rotation)
+    ///
+    /// `level_snap` is how close to level, in radians, the rotation has to be to snap to zero.
+    pub fn camera_set_rotation(&mut self, rotation: f64, level_snap: f64) -> WidgetFlags {
+        self.camera.set_rotation(rotation, level_snap)
     }
 
     /// Update the current pen with the current engine state.

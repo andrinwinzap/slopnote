@@ -194,6 +194,12 @@ impl RnAppWindow {
         let action_respect_borders =
             gio::PropertyAction::new("respect-borders", self, "respect-borders");
         self.add_action(&action_respect_borders);
+        let action_canvas_rotation =
+            gio::PropertyAction::new("canvas-rotation", self, "canvas-rotation");
+        self.add_action(&action_canvas_rotation);
+        let action_exclusive_zoom_rotation =
+            gio::PropertyAction::new("exclusive-zoom-rotation", self, "exclusive-zoom-rotation");
+        self.add_action(&action_exclusive_zoom_rotation);
         let action_autosave = gio::PropertyAction::new("autosave", self, "autosave");
         self.add_action(&action_autosave);
         let action_devel_mode = gio::PropertyAction::new("devel-mode", self, "devel-mode");
@@ -776,6 +782,44 @@ impl RnAppWindow {
             }
         ));
 
+        // Canvas rotation toggle. The rotate buttons follow it, and turning it off levels the
+        // canvas in every tab: nothing could turn it back otherwise.
+        let sync_canvas_rotation = clone!(
+            #[strong]
+            action_rotation_reset,
+            #[strong]
+            action_rotate_ccw,
+            #[strong]
+            action_rotate_cw,
+            move |appwindow: &RnAppWindow| {
+                let enabled = appwindow.canvas_rotation();
+                action_rotation_reset.set_enabled(enabled);
+                action_rotate_ccw.set_enabled(enabled);
+                action_rotate_cw.set_enabled(enabled);
+
+                if enabled {
+                    return;
+                }
+                for wrapper in appwindow.get_all_tabs() {
+                    let canvas = wrapper.canvas();
+                    if canvas.engine_ref().camera.rotation_unsnapped() == 0.0 {
+                        continue;
+                    }
+                    let viewport_center = canvas.engine_ref().camera.viewport_center();
+                    let mut widget_flags = canvas.engine_mut().camera_set_rotation(0.0, 0.0);
+                    widget_flags |= canvas
+                        .engine_mut()
+                        .camera
+                        .set_viewport_center(viewport_center);
+                    appwindow.handle_widget_flags(widget_flags, &canvas);
+                }
+            }
+        );
+        sync_canvas_rotation(self);
+        self.connect_notify_local(Some("canvas-rotation"), move |appwindow, _| {
+            sync_canvas_rotation(appwindow);
+        });
+
         // Rotation reset
         action_rotation_reset.connect_activate(clone!(
             #[weak(rename_to=appwindow)]
@@ -785,7 +829,7 @@ impl RnAppWindow {
                     return;
                 };
                 let viewport_center = canvas.engine_ref().camera.viewport_center();
-                let mut widget_flags = canvas.engine_mut().camera_set_rotation(0.0);
+                let mut widget_flags = canvas.engine_mut().camera_set_rotation(0.0, 0.0);
                 widget_flags |= canvas
                     .engine_mut()
                     .camera
@@ -803,9 +847,11 @@ impl RnAppWindow {
                     return;
                 };
                 let viewport_center = canvas.engine_ref().camera.viewport_center();
-                let new_rotation =
-                    canvas.engine_ref().camera.rotation() - RnCanvas::ROTATION_SCROLL_STEP;
-                let mut widget_flags = canvas.engine_mut().camera_set_rotation(new_rotation);
+                let new_rotation = canvas.engine_ref().camera.rotation_unsnapped()
+                    - RnCanvas::ROTATION_SCROLL_STEP;
+                let mut widget_flags = canvas
+                    .engine_mut()
+                    .camera_set_rotation(new_rotation, appwindow.rotation_level_snap_radians());
                 widget_flags |= canvas
                     .engine_mut()
                     .camera
@@ -823,9 +869,11 @@ impl RnAppWindow {
                     return;
                 };
                 let viewport_center = canvas.engine_ref().camera.viewport_center();
-                let new_rotation =
-                    canvas.engine_ref().camera.rotation() + RnCanvas::ROTATION_SCROLL_STEP;
-                let mut widget_flags = canvas.engine_mut().camera_set_rotation(new_rotation);
+                let new_rotation = canvas.engine_ref().camera.rotation_unsnapped()
+                    + RnCanvas::ROTATION_SCROLL_STEP;
+                let mut widget_flags = canvas
+                    .engine_mut()
+                    .camera_set_rotation(new_rotation, appwindow.rotation_level_snap_radians());
                 widget_flags |= canvas
                     .engine_mut()
                     .camera

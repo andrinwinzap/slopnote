@@ -141,6 +141,24 @@
       <default>false</default>
       <summary>block pinch to zoom</summary>
     </key>
+    <key name="canvas-rotation" type="b">
+      <default>true</default>
+      <summary>allow rotating the canvas</summary>
+    </key>
+    <key name="exclusive-zoom-rotation" type="b">
+      <default>true</default>
+      <summary>a two-finger gesture either zooms or rotates the canvas, not both</summary>
+    </key>
+    <key name="zoom-lock-threshold" type="d">
+      <range min="2" max="100" />
+      <default>20</default>
+      <summary>how far to pinch, in percent, for a two-finger gesture to settle on zooming</summary>
+    </key>
+    <key name="rotation-level-snap" type="d">
+      <range min="1" max="30" />
+      <default>3</default>
+      <summary>how close to level the canvas rotation has to be to snap to level, in degrees</summary>
+    </key>
     <key name="respect-borders" type="b">
       <default>false</default>
       <summary>respect borders when pasting</summary>

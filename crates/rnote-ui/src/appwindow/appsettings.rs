@@ -58,6 +58,24 @@ impl RnAppWindow {
             .get_no_changes()
             .build();
 
+        // canvas rotation
+        app_settings
+            .bind("canvas-rotation", self, "canvas-rotation")
+            .get_no_changes()
+            .build();
+        app_settings
+            .bind("exclusive-zoom-rotation", self, "exclusive-zoom-rotation")
+            .get_no_changes()
+            .build();
+        app_settings
+            .bind("rotation-level-snap", self, "rotation-level-snap")
+            .get_no_changes()
+            .build();
+        app_settings
+            .bind("zoom-lock-threshold", self, "zoom-lock-threshold")
+            .get_no_changes()
+            .build();
+
         // touch drawing
         app_settings
             .bind("touch-drawing", self, "touch-drawing")

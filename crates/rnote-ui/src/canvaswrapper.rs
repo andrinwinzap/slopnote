@@ -309,6 +309,17 @@ struct Connections {
     appwindow_righthanded_bind: Option<glib::Binding>,
 }
 
+/// What a two-finger gesture settled on, when zooming and rotating exclude each other.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TwoFingerLock {
+    Zoom,
+    Rotate,
+}
+
+/// How far the fingers have to turn for a two-finger gesture to settle on rotating, in radians:
+/// 10 degrees, as fingers turn a little by themselves when they pinch.
+const TWO_FINGER_LOCK_ROTATE_ANGLE: f64 = 0.175;
+
 mod imp {
     use super::*;
 
@@ -694,7 +705,8 @@ mod imp {
                     move |controller, _, dy| {
                         let modifiers = controller.current_event_state();
 
-                        if modifiers.contains(gdk::ModifierType::ALT_MASK)
+                        if canvaswrapper.canvas_rotation()
+                            && modifiers.contains(gdk::ModifierType::ALT_MASK)
                             && !modifiers.contains(gdk::ModifierType::CONTROL_MASK)
                         {
                             // workaround for https://gitlab.gnome.org/GNOME/gtk/-/issues/187
@@ -703,7 +715,7 @@ mod imp {
                                 .workaround_cancel_kinetic_scrolling_for_zoom();
 
                             let canvas = canvaswrapper.canvas();
-                            let old_rotation = canvas.engine_ref().camera.rotation();
+                            let old_rotation = canvas.engine_ref().camera.rotation_unsnapped();
                             let camera_size = canvas.engine_ref().camera.size();
                             let new_rotation = old_rotation - dy * RnCanvas::ROTATION_SCROLL_STEP;
 
@@ -729,8 +741,10 @@ mod imp {
                                 .transform_point2(screen_pivot);
 
                             // apply rotation
-                            let mut widget_flags =
-                                canvas.engine_mut().camera_set_rotation(new_rotation);
+                            let mut widget_flags = canvas.engine_mut().camera_set_rotation(
+                                new_rotation,
+                                canvaswrapper.rotation_level_snap_radians(),
+                            );
 
                             // transform pivot point back into view coordinates with new rotation (without offset)
                             // and calculate the offset needed for fixating the pivot point
@@ -980,6 +994,10 @@ mod imp {
                 // the centroid) instead of zooming and rotating the canvas.
                 let ruler_drag: Rc<Cell<Option<RulerDragBegin>>> = Rc::new(Cell::new(None));
 
+                // What this two-finger gesture has settled on when zooming and rotating exclude
+                // each other. Until then it does neither, and the two fingers only pan.
+                let gesture_lock: Rc<Cell<Option<TwoFingerLock>>> = Rc::new(Cell::new(None));
+
                 self.canvas_zoom_gesture.connect_begin(clone!(
                     #[strong]
                     zoom_begin,
@@ -987,10 +1005,13 @@ mod imp {
                     bbcenter_previous,
                     #[strong]
                     ruler_drag,
+                    #[strong]
+                    gesture_lock,
                     #[weak(rename_to=canvaswrapper)]
                     obj,
                     move |gesture, _| {
                         gesture.set_state(EventSequenceState::Claimed);
+                        gesture_lock.set(None);
                         debug!(
                             touch_points = gesture.sequences().len(),
                             "two-finger gesture began"
@@ -1094,6 +1115,8 @@ mod imp {
                     bbcenter_previous,
                     #[strong]
                     ruler_drag,
+                    #[strong]
+                    gesture_lock,
                     #[weak(rename_to=canvaswrapper)]
                     obj,
                     move |gesture, scale| {
@@ -1105,10 +1128,31 @@ mod imp {
 
                         let canvas = canvaswrapper.canvas();
                         let old_zoom = canvas.engine_ref().camera.total_zoom();
-                        let new_zoom =
-                            (zoom_begin.get() * scale).clamp(Camera::ZOOM_MIN, Camera::ZOOM_MAX);
 
-                        let mut widget_flags = canvas.engine_mut().zoom_w_timeout(new_zoom);
+                        let zooming = if canvaswrapper.zoom_rotation_exclusive() {
+                            match gesture_lock.get() {
+                                Some(TwoFingerLock::Zoom) => true,
+                                Some(TwoFingerLock::Rotate) => false,
+                                None if scale.ln().abs() >= canvaswrapper.zoom_lock_log_scale() => {
+                                    gesture_lock.set(Some(TwoFingerLock::Zoom));
+                                    // Carry on from where the zoom is, instead of jumping by
+                                    // what it took to settle on zooming.
+                                    zoom_begin.set(old_zoom / scale);
+                                    true
+                                }
+                                None => false,
+                            }
+                        } else {
+                            true
+                        };
+
+                        let (new_zoom, mut widget_flags) = if zooming {
+                            let new_zoom = (zoom_begin.get() * scale)
+                                .clamp(Camera::ZOOM_MIN, Camera::ZOOM_MAX);
+                            (new_zoom, canvas.engine_mut().zoom_w_timeout(new_zoom))
+                        } else {
+                            (old_zoom, rnote_engine::WidgetFlags::default())
+                        };
 
                         let bbcenter_current = gesture
                             .bounding_box_center()
@@ -1221,8 +1265,11 @@ mod imp {
                         move |gesture, _| {
                             gesture.set_state(EventSequenceState::Claimed);
 
-                            let current_rotation =
-                                canvaswrapper.canvas().engine_ref().camera.rotation();
+                            let current_rotation = canvaswrapper
+                                .canvas()
+                                .engine_ref()
+                                .camera
+                                .rotation_unsnapped();
                             rotation_begin.set(current_rotation);
 
                             bbcenter_begin.set(
@@ -1240,15 +1287,39 @@ mod imp {
                         bbcenter_begin,
                         #[strong]
                         ruler_drag,
+                        #[strong]
+                        gesture_lock,
                         #[weak(rename_to=canvaswrapper)]
                         obj,
                         move |gesture, _angle, angle_delta| {
                             // A two-finger gesture that began on the ruler turns the ruler.
-                            if ruler_drag.get().is_some() {
+                            if ruler_drag.get().is_some() || !canvaswrapper.canvas_rotation() {
                                 return;
                             }
 
                             let canvas = canvaswrapper.canvas();
+
+                            if canvaswrapper.zoom_rotation_exclusive() {
+                                match gesture_lock.get() {
+                                    Some(TwoFingerLock::Rotate) => {}
+                                    Some(TwoFingerLock::Zoom) => return,
+                                    None => {
+                                        if Camera::normalize_angle(angle_delta).abs()
+                                            < TWO_FINGER_LOCK_ROTATE_ANGLE
+                                        {
+                                            return;
+                                        }
+                                        gesture_lock.set(Some(TwoFingerLock::Rotate));
+                                        // Carry on from where the rotation is, instead of jumping
+                                        // by what it took to settle on rotating.
+                                        rotation_begin.set(
+                                            canvas.engine_ref().camera.rotation_unsnapped()
+                                                - angle_delta,
+                                        );
+                                    }
+                                }
+                            }
+
                             let camera_size = canvas.engine_ref().camera.size();
                             let new_rotation = rotation_begin.get() + angle_delta;
 
@@ -1268,8 +1339,10 @@ mod imp {
                                 .transform_point2(screen_pivot);
 
                             // apply rotation
-                            let mut widget_flags =
-                                canvas.engine_mut().camera_set_rotation(new_rotation);
+                            let mut widget_flags = canvas.engine_mut().camera_set_rotation(
+                                new_rotation,
+                                canvaswrapper.rotation_level_snap_radians(),
+                            );
 
                             // transform pivot point back into view coordinates with new rotation (without offset)
                             // and calculate the offset needed for fixating the pivot point
@@ -1566,6 +1639,45 @@ impl RnCanvasWrapper {
     pub(crate) fn set_show_scrollbars(&self, show_scrollbars: bool) {
         self.set_property("show-scrollbars", show_scrollbars.to_value());
     }
+    #[allow(unused)]
+    fn appwindow(&self) -> Option<RnAppWindow> {
+        self.root().and_downcast::<RnAppWindow>()
+    }
+
+    /// Whether the canvas may be rotated.
+    fn canvas_rotation(&self) -> bool {
+        self.appwindow()
+            .is_none_or(|appwindow| appwindow.canvas_rotation())
+    }
+
+    /// Whether a two-finger gesture has to settle on either zooming or rotating. There is nothing
+    /// to settle on while the canvas can only zoom.
+    fn zoom_rotation_exclusive(&self) -> bool {
+        self.appwindow().is_some_and(|appwindow| {
+            appwindow.canvas_rotation() && appwindow.exclusive_zoom_rotation()
+        })
+    }
+
+    /// How far the fingers have to pinch for a two-finger gesture to settle on zooming, as the
+    /// logarithm of the scale so that pinching in and out count the same.
+    fn zoom_lock_log_scale(&self) -> f64 {
+        let percent = self
+            .appwindow()
+            .map_or(RnAppWindow::ZOOM_LOCK_THRESHOLD_DEFAULT, |appwindow| {
+                appwindow.zoom_lock_threshold()
+            });
+
+        (1.0 + percent / 100.0).ln()
+    }
+
+    /// How close to level the rotation has to be to snap to level, in radians.
+    fn rotation_level_snap_radians(&self) -> f64 {
+        self.appwindow()
+            .map_or(RnAppWindow::ROTATION_LEVEL_SNAP_DEFAULT.to_radians(), |w| {
+                w.rotation_level_snap_radians()
+            })
+    }
+
     #[allow(unused)]
     pub(crate) fn block_pinch_zoom(&self) -> bool {
         self.property::<bool>("block-pinch-zoom")

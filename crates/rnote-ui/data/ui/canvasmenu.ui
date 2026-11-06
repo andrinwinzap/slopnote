@@ -45,6 +45,16 @@
             <attribute name="toggle" />
             <attribute name="action">win.block-pinch-zoom</attribute>
           </item>
+          <item>
+            <attribute name="label" translatable="yes">Canvas R_otation</attribute>
+            <attribute name="toggle" />
+            <attribute name="action">win.canvas-rotation</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Either Zoom or Rotate With Two _Fingers</attribute>
+            <attribute name="toggle" />
+            <attribute name="action">win.exclusive-zoom-rotation</attribute>
+          </item>
         </section>
         <section>
           <item>
