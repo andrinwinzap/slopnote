@@ -317,7 +317,7 @@ impl RnAppWindow {
         let target_box = if left {
             header.imp().left_sidebar_reveal_toggle.parent()
         } else {
-            header.imp().canvasmenu.parent()
+            header.imp().right_sidebar_reveal_toggle.parent()
         }
         .and_downcast::<gtk4::Box>();
         if let Some(target_box) = target_box
@@ -334,7 +334,10 @@ impl RnAppWindow {
                     target_box.reorder_child_after(&focus_mode_button, Some(&toggle));
                 }
             } else {
-                target_box.prepend(&toggle);
+                // Before the sidebar toggle.
+                let sidebar_toggle = header.imp().right_sidebar_reveal_toggle.get();
+                target_box.append(&toggle);
+                target_box.reorder_child_after(&toggle, sidebar_toggle.prev_sibling().as_ref());
             }
         }
 
