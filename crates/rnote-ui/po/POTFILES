@@ -17,6 +17,7 @@ crates/rnote-ui/data/ui/workspacesbar/workspacerow.ui
 crates/rnote-ui/data/ui/workspacesbar/workspacesbar.ui
 crates/rnote-ui/data/ui/appmenu.ui
 crates/rnote-ui/data/ui/appwindow.ui
+crates/rnote-ui/data/ui/bookmarkspanel.ui
 crates/rnote-ui/data/ui/canvasmenu.ui
 crates/rnote-ui/data/ui/canvaswrapper.ui
 crates/rnote-ui/data/ui/colorpicker.ui
@@ -40,6 +41,7 @@ crates/rnote-ui/src/appwindow/imp.rs
 crates/rnote-ui/src/appwindow/mod.rs
 crates/rnote-ui/src/canvas/imexport.rs
 crates/rnote-ui/src/canvas/mod.rs
+crates/rnote-ui/src/bookmarkspanel.rs
 crates/rnote-ui/src/canvasmenu.rs
 crates/rnote-ui/src/canvaswrapper.rs
 crates/rnote-ui/src/dialogs/export.rs

@@ -348,6 +348,7 @@ rnote_ui_gresources_icons_files = files(
 rnote_ui_gresources_ui_files = files(
     'ui/appmenu.ui',
     'ui/appwindow.ui',
+    'ui/bookmarkspanel.ui',
     'ui/canvasmenu.ui',
     'ui/canvaswrapper.ui',
     'ui/colorpicker.ui',

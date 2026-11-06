@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <template class="RnBookmarksPanel" parent="GtkWidget">
+    <property name="layout-manager">
+      <object class="GtkBinLayout" />
+    </property>
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkBox">
+            <property name="orientation">horizontal</property>
+            <property name="spacing">6</property>
+            <property name="homogeneous">true</property>
+            <property name="margin-top">12</property>
+            <property name="margin-bottom">6</property>
+            <property name="margin-start">12</property>
+            <property name="margin-end">12</property>
+            <child>
+              <object class="GtkButton">
+                <property name="icon_name">plus-symbolic</property>
+                <property name="tooltip_text" translatable="yes">Add Bookmark for the Current View</property>
+                <property name="action-name">win.add-bookmark</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="icon_name">dir-up-symbolic</property>
+                <property name="tooltip_text" translatable="yes">Jump to the Previous Bookmark</property>
+                <property name="action-name">win.bookmark-prev</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="icon_name">dir-down-symbolic</property>
+                <property name="tooltip_text" translatable="yes">Jump to the Next Bookmark</property>
+                <property name="action-name">win.bookmark-next</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="icon_name">edit-undo-symbolic</property>
+                <property name="tooltip_text" translatable="yes">Jump Back to the Previous View</property>
+                <property name="action-name">win.bookmark-jump-back</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="vexpand">true</property>
+            <property name="hscrollbar-policy">never</property>
+            <child>
+              <object class="GtkListBox" id="listbox">
+                <property name="selection-mode">none</property>
+                <property name="valign">start</property>
+                <property name="margin-top">6</property>
+                <property name="margin-bottom">12</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+                <style>
+                  <class name="boxed-list" />
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

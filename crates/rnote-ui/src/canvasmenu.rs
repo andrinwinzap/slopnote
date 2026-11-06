@@ -1,10 +1,8 @@
 // Imports
 use crate::appwindow::RnAppWindow;
-use crate::workspacebrowser::widgethelper;
-use gettextrs::gettext;
 use gtk4::{
-    Align, Button, CompositeTemplate, Entry, Label, ListBox, ListBoxRow, MenuButton, PopoverMenu,
-    Widget, gio, glib, glib::clone, pango, prelude::*, subclass::prelude::*,
+    Button, CompositeTemplate, MenuButton, PopoverMenu, Widget, gio, glib, glib::clone, prelude::*,
+    subclass::prelude::*,
 };
 use rnote_engine::Camera;
 
@@ -34,8 +32,6 @@ mod imp {
         pub(crate) rotation_reset_button: TemplateChild<Button>,
         #[template_child]
         pub(crate) fixedsize_quickactions_box: TemplateChild<gtk4::Box>,
-        #[template_child]
-        pub(crate) bookmarks_listbox: TemplateChild<ListBox>,
     }
 
     #[glib::object_subclass]
@@ -107,34 +103,10 @@ impl RnCanvasMenu {
         self.refresh_zoom_reset_label(Camera::ZOOM_DEFAULT);
         self.refresh_rotation_reset_label(0.0);
 
-        let bookmarks_placeholder = Label::builder()
-            .label(gettext("No bookmarks"))
-            .margin_top(6)
-            .margin_bottom(6)
-            .css_classes(["dim-label"])
-            .build();
-        self.imp()
-            .bookmarks_listbox
-            .set_placeholder(Some(&bookmarks_placeholder));
-
-        // The bookmarks of the active tab can change while the popover is closed,
-        // so refresh the list every time it gets opened.
-        self.imp().popovermenu.connect_map(clone!(
-            #[weak(rename_to=canvasmenu)]
-            self,
-            #[weak]
-            appwindow,
-            move |_| {
-                canvasmenu.refresh_bookmarks(&appwindow);
-            }
-        ));
-
         self.imp().popovermenu.connect_closed(clone!(
             #[weak]
             appwindow,
             move |_| {
-                set_highlighted_bookmark(&appwindow, None);
-
                 // Return the keyboard focus to the canvas. If it stays on the menubutton,
                 // keyboard shortcuts stop working until the canvas is focused again by drawing.
                 if let Some(canvas) = appwindow.active_tab_canvas() {
@@ -161,204 +133,4 @@ impl RnCanvasMenu {
             .rotation_reset_button
             .set_label(format!("{:.0}°", rotation.to_degrees()).as_str());
     }
-
-    /// Rebuild the bookmarks list from the engine of the active tab.
-    pub(crate) fn refresh_bookmarks(&self, appwindow: &RnAppWindow) {
-        let listbox = self.imp().bookmarks_listbox.get();
-
-        // The bookmark indices might change, so any current highlight becomes stale.
-        set_highlighted_bookmark(appwindow, None);
-
-        while let Some(row) = listbox.row_at_index(0) {
-            listbox.remove(&row);
-        }
-
-        let Some(canvas) = appwindow.active_tab_canvas() else {
-            return;
-        };
-        let bookmarks = canvas.engine_ref().bookmarks_in_document_order();
-        let format_height = canvas.engine_ref().document.config.format.height();
-
-        for (engine_index, bookmark) in bookmarks {
-            let page_no = if format_height > 0.0 {
-                ((bookmark.pos[1] / format_height).floor() as i64 + 1).max(1)
-            } else {
-                1
-            };
-            let location_text = format!(
-                "{} {} · {:.0}%",
-                gettext("Page"),
-                page_no,
-                bookmark.zoom * 100.0
-            );
-
-            let labels_box = gtk4::Box::builder()
-                .orientation(gtk4::Orientation::Vertical)
-                .hexpand(true)
-                .valign(Align::Center)
-                .build();
-            if bookmark.name.is_empty() {
-                let title_label = Label::builder()
-                    .label(location_text)
-                    .xalign(0.0)
-                    .ellipsize(pango::EllipsizeMode::End)
-                    .build();
-                labels_box.append(&title_label);
-            } else {
-                let title_label = Label::builder()
-                    .label(&bookmark.name)
-                    .xalign(0.0)
-                    .ellipsize(pango::EllipsizeMode::End)
-                    .build();
-                let location_label = Label::builder()
-                    .label(location_text)
-                    .xalign(0.0)
-                    .css_classes(["caption", "dim-label"])
-                    .build();
-                labels_box.append(&title_label);
-                labels_box.append(&location_label);
-            }
-
-            let rename_button = Button::builder()
-                .icon_name("edit-symbolic")
-                .tooltip_text(gettext("Rename Bookmark"))
-                .css_classes(["flat"])
-                .build();
-            rename_button.connect_clicked(clone!(
-                #[weak(rename_to=canvasmenu)]
-                self,
-                #[weak]
-                appwindow,
-                #[strong(rename_to=name)]
-                bookmark.name,
-                move |button| {
-                    canvasmenu.rename_bookmark_dialog(
-                        &appwindow,
-                        button,
-                        engine_index as u32,
-                        &name,
-                    );
-                }
-            ));
-
-            let remove_button = Button::builder()
-                .icon_name("trash-symbolic")
-                .tooltip_text(gettext("Remove Bookmark"))
-                .css_classes(["flat"])
-                .build();
-            remove_button.set_action_name(Some("win.remove-bookmark-at"));
-            remove_button.set_action_target_value(Some(&(engine_index as u32).to_variant()));
-
-            let row_box = gtk4::Box::builder()
-                .orientation(gtk4::Orientation::Horizontal)
-                .spacing(6)
-                .margin_start(6)
-                .build();
-            row_box.append(&labels_box);
-            row_box.append(&rename_button);
-            row_box.append(&remove_button);
-
-            let row = ListBoxRow::builder().child(&row_box).build();
-            row.set_action_name(Some("win.jump-to-bookmark"));
-            row.set_action_target_value(Some(&(engine_index as u32).to_variant()));
-
-            // Indicate the bookmark location on the canvas while its row is hovered.
-            let motion_controller = gtk4::EventControllerMotion::new();
-            motion_controller.connect_enter(clone!(
-                #[weak]
-                appwindow,
-                move |_, _, _| {
-                    set_highlighted_bookmark(&appwindow, Some(engine_index));
-                }
-            ));
-            motion_controller.connect_leave(clone!(
-                #[weak]
-                appwindow,
-                move |_| {
-                    set_highlighted_bookmark(&appwindow, None);
-                }
-            ));
-            row.add_controller(motion_controller);
-
-            listbox.append(&row);
-        }
-    }
-
-    /// Shows a small dialog popover on `parent` for renaming the bookmark at `engine_index`.
-    fn rename_bookmark_dialog(
-        &self,
-        appwindow: &RnAppWindow,
-        parent: &impl IsA<Widget>,
-        engine_index: u32,
-        current_name: &str,
-    ) {
-        let entry = Entry::builder()
-            .text(current_name)
-            .placeholder_text(gettext("Bookmark name"))
-            .build();
-        let label = Label::builder()
-            .margin_bottom(12)
-            .halign(Align::Center)
-            .label(gettext("Rename Bookmark"))
-            .width_chars(24)
-            .ellipsize(pango::EllipsizeMode::End)
-            .build();
-        label.add_css_class("title-4");
-
-        let (apply_button, popover) = widgethelper::create_entry_dialog(&entry, &label);
-        popover.set_parent(parent);
-        popover.connect_closed(|popover| {
-            glib::idle_add_local_once(clone!(
-                #[weak]
-                popover,
-                move || {
-                    popover.unparent();
-                }
-            ));
-        });
-
-        apply_button.connect_clicked(clone!(
-            #[weak(rename_to=canvasmenu)]
-            self,
-            #[weak]
-            appwindow,
-            #[weak]
-            popover,
-            #[weak]
-            entry,
-            move |_| {
-                if let Some(canvas) = appwindow.active_tab_canvas() {
-                    let widget_flags = canvas
-                        .engine_mut()
-                        .rename_bookmark_at(engine_index as usize, entry.text().trim().to_owned());
-                    if let Some(widget_flags) = widget_flags {
-                        appwindow.handle_widget_flags(widget_flags, &canvas);
-                    }
-                }
-                popover.popdown();
-                glib::idle_add_local_once(clone!(
-                    #[weak]
-                    canvasmenu,
-                    #[weak]
-                    appwindow,
-                    move || {
-                        canvasmenu.refresh_bookmarks(&appwindow);
-                    }
-                ));
-            }
-        ));
-
-        popover.popup();
-        entry.grab_focus();
-    }
-}
-
-/// Set the bookmark whose indicator gets drawn on the canvas of the active tab,
-/// or None to hide all bookmark indicators.
-fn set_highlighted_bookmark(appwindow: &RnAppWindow, index: Option<usize>) {
-    let Some(canvas) = appwindow.active_tab_canvas() else {
-        return;
-    };
-    let widget_flags = canvas.engine_mut().set_highlighted_bookmark(index);
-    appwindow.handle_widget_flags(widget_flags, &canvas);
 }

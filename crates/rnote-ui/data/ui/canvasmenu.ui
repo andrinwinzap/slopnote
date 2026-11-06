@@ -58,12 +58,6 @@
           </item>
         </section>
         <section>
-          <attribute name="label" translatable="yes">Bookmarks</attribute>
-          <item>
-            <attribute name="custom">bookmarks_attr</attribute>
-          </item>
-        </section>
-        <section>
           <item>
             <attribute name="label" translatable="yes">_Return to Origin Page</attribute>
             <attribute name="action">win.return-origin-page</attribute>
@@ -74,74 +68,6 @@
           </item>
         </section>
       </menu>
-
-      <child type="bookmarks_attr">
-        <object class="GtkBox">
-          <property name="orientation">vertical</property>
-          <property name="hexpand">false</property>
-          <property name="vexpand">false</property>
-          <property name="margin-top">3</property>
-          <property name="margin-bottom">3</property>
-          <property name="margin-start">3</property>
-          <property name="margin-end">3</property>
-          <property name="spacing">6</property>
-          <child>
-            <object class="GtkBox">
-              <property name="orientation">horizontal</property>
-              <property name="spacing">6</property>
-              <property name="hexpand">true</property>
-              <property name="homogeneous">true</property>
-              <child>
-                <object class="GtkButton" id="bookmark_add_button">
-                  <property name="icon_name">plus-symbolic</property>
-                  <property name="tooltip_text" translatable="yes">Add Bookmark for the Current View</property>
-                  <property name="action-name">win.add-bookmark</property>
-                  <property name="hexpand">true</property>
-                </object>
-              </child>
-              <child>
-                <object class="GtkButton" id="bookmark_prev_button">
-                  <property name="icon_name">dir-up-symbolic</property>
-                  <property name="tooltip_text" translatable="yes">Jump to the Previous Bookmark</property>
-                  <property name="action-name">win.bookmark-prev</property>
-                  <property name="hexpand">true</property>
-                </object>
-              </child>
-              <child>
-                <object class="GtkButton" id="bookmark_next_button">
-                  <property name="icon_name">dir-down-symbolic</property>
-                  <property name="tooltip_text" translatable="yes">Jump to the Next Bookmark</property>
-                  <property name="action-name">win.bookmark-next</property>
-                  <property name="hexpand">true</property>
-                </object>
-              </child>
-              <child>
-                <object class="GtkButton" id="bookmark_jump_back_button">
-                  <property name="icon_name">edit-undo-symbolic</property>
-                  <property name="tooltip_text" translatable="yes">Jump Back to the Previous View</property>
-                  <property name="action-name">win.bookmark-jump-back</property>
-                  <property name="hexpand">true</property>
-                </object>
-              </child>
-            </object>
-          </child>
-          <child>
-            <object class="GtkScrolledWindow" id="bookmarks_scroller">
-              <property name="hscrollbar-policy">never</property>
-              <property name="propagate-natural-height">true</property>
-              <property name="max-content-height">280</property>
-              <child>
-                <object class="GtkListBox" id="bookmarks_listbox">
-                  <property name="selection-mode">none</property>
-                  <style>
-                    <class name="boxed-list" />
-                  </style>
-                </object>
-              </child>
-            </object>
-          </child>
-        </object>
-      </child>
 
       <child type="canvas_quickcontrols_attr">
         <object class="GtkBox">

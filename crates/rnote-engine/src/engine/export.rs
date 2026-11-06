@@ -1,9 +1,11 @@
 // Imports
 use super::{Engine, StrokeContent};
+use crate::Camera;
 use crate::fileformats::rnoteformat::RnoteFile;
 use crate::fileformats::{FileFormatSaver, xoppformat};
 use anyhow::Context;
 use futures::channel::oneshot;
+use p2d::bounding_volume::Aabb;
 use p2d::math::Vector2;
 use rayon::prelude::*;
 use rnote_compose::SplitOrder;
@@ -374,6 +376,28 @@ impl Engine {
             return None;
         }
         Some(self.stroke_content_from_sorted_keys(selection_keys))
+    }
+
+    /// Extract the content of the view of the bookmark at `index` into [Document](crate::Document)'s bookmarks,
+    /// for showing a preview of it.
+    ///
+    /// The view has the size of the current viewport at the bookmark zoom, so the preview shows
+    /// what jumping to the bookmark would show. Returns None when the index is out of bounds.
+    pub fn extract_bookmark_preview_content(&self, index: usize) -> Option<StrokeContent> {
+        let bookmark = self.document.bookmarks.get(index)?;
+        let mut size = self.camera.size();
+        if size[0] <= 1.0 || size[1] <= 1.0 {
+            size = self.document.config.format.size();
+        }
+        let half_extents = size * 0.5 / bookmark.zoom.max(Camera::ZOOM_MIN);
+        let bounds = Aabb::new(bookmark.pos - half_extents, bookmark.pos + half_extents);
+        let keys = self
+            .store
+            .stroke_keys_as_rendered_intersecting_bounds(bounds);
+        Some(
+            self.stroke_content_from_sorted_keys(keys)
+                .with_bounds(bounds),
+        )
     }
 
     /// Extract thumbnail content.

@@ -373,6 +373,7 @@ impl RnAppWindow {
         if widget_flags.store_modified {
             canvas.set_unsaved_changes(true);
             canvas.set_empty(false);
+            self.sidebar().bookmarks_panel().previews_outdated();
         }
         if widget_flags.view_modified {
             canvas.queue_allocate();
@@ -816,6 +817,7 @@ impl RnAppWindow {
             .refresh_ui(self);
         self.overlays().penssidebar().tools_page().refresh_ui(self);
         self.sidebar().settings_panel().refresh_ui(self);
+        self.sidebar().bookmarks_panel().refresh();
 
         if let Some(canvas) = canvas {
             self.refresh_titles(&canvas);

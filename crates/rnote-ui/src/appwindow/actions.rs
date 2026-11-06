@@ -962,10 +962,7 @@ impl RnAppWindow {
                 };
                 let widget_flags = canvas.engine_mut().add_bookmark();
                 appwindow.handle_widget_flags(widget_flags, &canvas);
-                appwindow
-                    .main_header()
-                    .canvasmenu()
-                    .refresh_bookmarks(&appwindow);
+                appwindow.sidebar().bookmarks_panel().refresh();
                 appwindow
                     .overlays()
                     .dispatch_toast_text(&gettext("Added bookmark"), None);
@@ -984,10 +981,7 @@ impl RnAppWindow {
                 match widget_flags {
                     Some(widget_flags) => {
                         appwindow.handle_widget_flags(widget_flags, &canvas);
-                        appwindow
-                            .main_header()
-                            .canvasmenu()
-                            .refresh_bookmarks(&appwindow);
+                        appwindow.sidebar().bookmarks_panel().refresh();
                         appwindow
                             .overlays()
                             .dispatch_toast_text(&gettext("Removed bookmark"), None);
@@ -1064,10 +1058,7 @@ impl RnAppWindow {
                 if let Some(widget_flags) = widget_flags {
                     appwindow.handle_widget_flags(widget_flags, &canvas);
                 }
-                appwindow
-                    .main_header()
-                    .canvasmenu()
-                    .refresh_bookmarks(&appwindow);
+                appwindow.sidebar().bookmarks_panel().refresh();
             }
         ));
 

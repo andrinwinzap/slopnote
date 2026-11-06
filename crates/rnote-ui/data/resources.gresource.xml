@@ -17,6 +17,7 @@
         <file compressed="true" preprocess="xml-stripblanks">ui/workspacesbar/workspacesbar.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/appmenu.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/appwindow.ui</file>
+        <file compressed="true" preprocess="xml-stripblanks">ui/bookmarkspanel.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/canvasmenu.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/canvaswrapper.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/colorpicker.ui</file>
