@@ -56,17 +56,6 @@
                 </property>
               </object>
             </child>
-            <!-- bookmarks page -->
-            <child>
-              <object class="AdwViewStackPage">
-                <property name="name">bookmarks_page</property>
-                <property name="title" translatable="yes">Bookmarks</property>
-                <property name="icon-name">workspacelistentryicon-bookmark-symbolic</property>
-                <property name="child">
-                  <object class="RnBookmarksPanel" id="bookmarks_panel"></object>
-                </property>
-              </object>
-            </child>
             <!-- settings page -->
             <child>
               <object class="AdwViewStackPage">

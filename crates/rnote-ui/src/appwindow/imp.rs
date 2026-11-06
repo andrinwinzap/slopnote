@@ -1,5 +1,5 @@
 // Imports
-use crate::{RnMainHeader, RnOverlays, RnSidebar, config, dialogs};
+use crate::{RnBookmarksPanel, RnMainHeader, RnOverlays, RnSidebar, config, dialogs};
 use adw::{prelude::*, subclass::prelude::*};
 use gettextrs::gettext;
 use gtk4::{
@@ -58,6 +58,10 @@ pub(crate) struct RnAppWindow {
     pub(crate) tabbar: TemplateChild<adw::TabBar>,
     #[template_child]
     pub(crate) overlays: TemplateChild<RnOverlays>,
+    #[template_child]
+    pub(crate) bookmarks_revealer: TemplateChild<gtk4::Revealer>,
+    #[template_child]
+    pub(crate) bookmarks_panel: TemplateChild<RnBookmarksPanel>,
 }
 
 impl Default for RnAppWindow {
@@ -98,6 +102,8 @@ impl Default for RnAppWindow {
             sidebar: TemplateChild::<RnSidebar>::default(),
             tabbar: TemplateChild::<adw::TabBar>::default(),
             overlays: TemplateChild::<RnOverlays>::default(),
+            bookmarks_revealer: TemplateChild::<gtk4::Revealer>::default(),
+            bookmarks_panel: TemplateChild::<RnBookmarksPanel>::default(),
         }
     }
 }

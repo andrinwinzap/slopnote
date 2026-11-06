@@ -126,6 +126,7 @@ mod imp {
             StrokeWidthPreviewStyle::static_type();
             RnStrokeContentPreview::static_type();
             RnSidebar::static_type();
+            crate::RnBookmarksPanel::static_type();
             RnPenPicker::static_type();
         }
 

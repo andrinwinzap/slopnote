@@ -87,6 +87,13 @@
               <object class="GtkBox">
                 <property name="spacing">3</property>
                 <child>
+                  <object class="GtkToggleButton" id="bookmarks_toggle">
+                    <property name="icon-name">workspacelistentryicon-bookmark-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Show/Hide Bookmarks</property>
+                    <property name="focus-on-click">false</property>
+                  </object>
+                </child>
+                <child>
                   <object class="RnCanvasMenu" id="canvasmenu">
                     <property name="tooltip-text" translatable="yes">Canvas Menu</property>
                   </object> 

@@ -1,5 +1,5 @@
 // Imports
-use crate::{RnAppMenu, RnAppWindow, RnBookmarksPanel, RnSettingsPanel, RnWorkspaceBrowser};
+use crate::{RnAppMenu, RnAppWindow, RnSettingsPanel, RnWorkspaceBrowser};
 use gtk4::{
     Button, CompositeTemplate, Widget, glib, glib::clone, prelude::*, subclass::prelude::*,
 };
@@ -22,8 +22,6 @@ mod imp {
         pub(crate) sidebar_stack: TemplateChild<adw::ViewStack>,
         #[template_child]
         pub(crate) workspacebrowser: TemplateChild<RnWorkspaceBrowser>,
-        #[template_child]
-        pub(crate) bookmarks_panel: TemplateChild<RnBookmarksPanel>,
         #[template_child]
         pub(crate) settings_panel: TemplateChild<RnSettingsPanel>,
     }
@@ -100,10 +98,6 @@ impl RnSidebar {
         self.imp().workspacebrowser.get()
     }
 
-    pub(crate) fn bookmarks_panel(&self) -> RnBookmarksPanel {
-        self.imp().bookmarks_panel.get()
-    }
-
     pub(crate) fn settings_panel(&self) -> RnSettingsPanel {
         self.imp().settings_panel.get()
     }
@@ -113,7 +107,6 @@ impl RnSidebar {
 
         imp.appmenu.get().init(appwindow);
         imp.workspacebrowser.get().init(appwindow);
-        imp.bookmarks_panel.get().init(appwindow);
         imp.settings_panel.get().init(appwindow);
 
         imp.left_close_button.connect_clicked(clone!(

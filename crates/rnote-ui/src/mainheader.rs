@@ -21,6 +21,8 @@ mod imp {
         #[template_child]
         pub(crate) right_sidebar_reveal_toggle: TemplateChild<ToggleButton>,
         #[template_child]
+        pub(crate) bookmarks_toggle: TemplateChild<ToggleButton>,
+        #[template_child]
         pub(crate) canvasmenu: TemplateChild<RnCanvasMenu>,
         #[template_child]
         pub(crate) appmenu: TemplateChild<RnAppMenu>,
@@ -106,5 +108,14 @@ impl RnMainHeader {
 
         imp.canvasmenu.get().init(appwindow);
         imp.appmenu.get().init(appwindow);
+
+        imp.bookmarks_toggle
+            .bind_property(
+                "active",
+                &appwindow.imp().bookmarks_revealer.get(),
+                "reveal-child",
+            )
+            .sync_create()
+            .build();
     }
 }
