@@ -16,6 +16,98 @@ const PREVIEW_PAINT_WIDTH: f64 = 450.0;
 /// The time to wait after the document was modified before the previews get repainted.
 const PREVIEW_REFRESH_TIMEOUT: Duration = Duration::from_millis(800);
 
+/// Identifies a bookmark by its view, its index can change when others are added or removed.
+type BookmarkKey = (u64, u64, u64);
+
+fn bookmark_key(bookmark: &Bookmark) -> BookmarkKey {
+    (
+        bookmark.pos[0].to_bits(),
+        bookmark.pos[1].to_bits(),
+        bookmark.zoom.to_bits(),
+    )
+}
+
+/// What a preview shows, to repaint it only when that changed.
+///
+/// Strokes are compared by their allocation: the store copies a stroke before modifying it while
+/// the preview still holds it, so a modified stroke always has a new one.
+#[derive(Debug, PartialEq)]
+struct PreviewSignature {
+    bounds: [u64; 4],
+    strokes: Vec<(
+        usize,
+        std::mem::Discriminant<rnote_engine::store::chrono_comp::StrokeLayer>,
+    )>,
+    background: String,
+    paint_width: u64,
+}
+
+#[derive(Debug)]
+pub(crate) struct Preview {
+    engine_index: usize,
+    key: BookmarkKey,
+    paintable: StrokeContentPaintable,
+    signature: Option<PreviewSignature>,
+}
+
+impl Preview {
+    fn new(engine_index: usize, key: BookmarkKey) -> Self {
+        let paintable = StrokeContentPaintable::new();
+        paintable.set_draw_background(true);
+        paintable.set_draw_pattern(true);
+        Self {
+            engine_index,
+            key,
+            paintable,
+            signature: None,
+        }
+    }
+
+    /// Repaint the preview from the current content of the bookmark view, if it changed.
+    fn update(&mut self, canvas: &RnCanvas, scale_factor: f64) {
+        let Some(content) = canvas
+            .engine_ref()
+            .extract_bookmark_preview_content(self.engine_index)
+        else {
+            return;
+        };
+        let (Some(bounds), Some(size)) = (content.bounds(), content.size()) else {
+            return;
+        };
+        let paint_width = PREVIEW_PAINT_WIDTH * scale_factor;
+        let signature = PreviewSignature {
+            bounds: [
+                bounds.mins[0].to_bits(),
+                bounds.mins[1].to_bits(),
+                bounds.maxs[0].to_bits(),
+                bounds.maxs[1].to_bits(),
+            ],
+            strokes: content
+                .strokes
+                .iter()
+                .map(|s| {
+                    (
+                        std::sync::Arc::as_ptr(&s.stroke) as usize,
+                        std::mem::discriminant(&s.layer),
+                    )
+                })
+                .collect(),
+            background: format!("{:?}", content.background),
+            paint_width: paint_width.to_bits(),
+        };
+        if self.signature.as_ref() == Some(&signature) {
+            return;
+        }
+        self.signature = Some(signature);
+        // Keep the aspect ratio of the content, the paintable scales the axes separately.
+        self.paintable.set_stroke_content_w_paint_max_size(
+            content,
+            paint_width,
+            paint_width * size[1] / size[0].max(1.0),
+        );
+    }
+}
+
 mod imp {
     use super::*;
 
@@ -25,8 +117,9 @@ mod imp {
         pub(crate) appwindow: glib::WeakRef<RnAppWindow>,
         /// The canvas and its bookmarks the list was built for, to skip rebuilding it when nothing changed.
         pub(crate) built_for: RefCell<Option<(glib::WeakRef<RnCanvas>, Vec<Bookmark>)>>,
-        /// The preview paintables of the rows, with their bookmark index.
-        pub(crate) previews: RefCell<Vec<(usize, StrokeContentPaintable)>>,
+        /// The previews of the rows. They are kept when the list is rebuilt, so the previews of
+        /// bookmarks that are still there don't have to be painted again.
+        pub(crate) previews: RefCell<Vec<Preview>>,
         pub(crate) previews_stale: Cell<bool>,
         pub(crate) preview_refresh_source: RefCell<Option<glib::SourceId>>,
 
@@ -198,10 +291,8 @@ impl RnBookmarksPanel {
             return;
         };
         let scale_factor = self.scale_factor().max(1) as f64;
-        for (index, paintable) in imp.previews.borrow().iter() {
-            if let Some(content) = canvas.engine_ref().extract_bookmark_preview_content(*index) {
-                set_preview_content(paintable, content, scale_factor);
-            }
+        for preview in imp.previews.borrow_mut().iter_mut() {
+            preview.update(&canvas, scale_factor);
         }
     }
 
@@ -211,7 +302,7 @@ impl RnBookmarksPanel {
 
         // The bookmark indices might change, so any current highlight becomes stale.
         set_highlighted_bookmark(appwindow, None);
-        imp.previews.borrow_mut().clear();
+        let mut old_previews = imp.previews.take();
         imp.previews_stale.set(false);
         while let Some(row) = listbox.row_at_index(0) {
             listbox.remove(&row);
@@ -237,24 +328,20 @@ impl RnBookmarksPanel {
                 bookmark.zoom * 100.0
             );
 
-            let paintable = StrokeContentPaintable::new();
-            paintable.set_draw_background(true);
-            paintable.set_draw_pattern(true);
-            if let Some(content) = canvas
-                .engine_ref()
-                .extract_bookmark_preview_content(engine_index)
-            {
-                set_preview_content(&paintable, content, scale_factor);
-            }
+            let key = bookmark_key(&bookmark);
+            let mut preview = match old_previews.iter().position(|p| p.key == key) {
+                Some(i) => old_previews.swap_remove(i),
+                None => Preview::new(engine_index, key),
+            };
+            preview.engine_index = engine_index;
+            preview.update(canvas, scale_factor);
             let picture = Picture::builder()
-                .paintable(&paintable)
+                .paintable(&preview.paintable)
                 .content_fit(ContentFit::Contain)
                 .can_shrink(true)
                 .build();
+            imp.previews.borrow_mut().push(preview);
             let preview = BookmarkPreview::new(&picture);
-            imp.previews
-                .borrow_mut()
-                .push((engine_index, paintable.clone()));
 
             let labels_box = gtk4::Box::builder()
                 .orientation(gtk4::Orientation::Vertical)
@@ -417,21 +504,6 @@ impl RnBookmarksPanel {
         popover.popup();
         entry.grab_focus();
     }
-}
-
-fn set_preview_content(
-    paintable: &StrokeContentPaintable,
-    content: rnote_engine::engine::StrokeContent,
-    scale_factor: f64,
-) {
-    let Some(size) = content.size() else {
-        return;
-    };
-    // Keep the aspect ratio of the content, the paintable scales the axes separately.
-    let paint_width = PREVIEW_PAINT_WIDTH * scale_factor;
-    paintable.set_paint_max_width(paint_width);
-    paintable.set_paint_max_height(paint_width * size[1] / size[0].max(1.0));
-    paintable.set_stroke_content(content);
 }
 
 mod preview_imp {

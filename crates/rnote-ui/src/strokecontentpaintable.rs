@@ -403,6 +403,25 @@ impl StrokeContentPaintable {
         }
     }
 
+    /// Set the stroke content together with the maximum paint size, repainting only once.
+    pub(crate) fn set_stroke_content_w_paint_max_size(
+        &self,
+        stroke_content: StrokeContent,
+        paint_max_width: f64,
+        paint_max_height: f64,
+    ) {
+        let imp = self.imp();
+        if imp.paint_max_width.get() != paint_max_width {
+            imp.paint_max_width.set(paint_max_width.max(0.0));
+            self.notify("paint-max-width");
+        }
+        if imp.paint_max_height.get() != paint_max_height {
+            imp.paint_max_height.set(paint_max_height.max(0.0));
+            self.notify("paint-max-height");
+        }
+        self.set_stroke_content(stroke_content);
+    }
+
     pub(crate) fn set_stroke_content(&self, stroke_content: StrokeContent) {
         self.imp().stroke_content.replace(stroke_content);
         self.repaint_cache_async();
