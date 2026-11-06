@@ -295,6 +295,28 @@ impl RnAppWindow {
         let revealer = imp.bookmarks_revealer.get();
         let separator = imp.bookmarks_separator.get();
         let revealer_box = imp.bookmarks_revealer_box.get();
+        // Keep the toggle button on the same side as the panel.
+        let header = self.main_header();
+        let toggle = header.imp().bookmarks_toggle.get();
+        let target_box = if left {
+            header.imp().left_sidebar_reveal_toggle.parent()
+        } else {
+            header.imp().canvasmenu.parent()
+        }
+        .and_downcast::<gtk4::Box>();
+        if let Some(target_box) = target_box
+            && toggle.parent().as_ref() != Some(target_box.upcast_ref())
+        {
+            if let Some(old_box) = toggle.parent().and_downcast::<gtk4::Box>() {
+                old_box.remove(&toggle);
+            }
+            if left {
+                target_box.append(&toggle);
+            } else {
+                target_box.prepend(&toggle);
+            }
+        }
+
         if left {
             imp.canvas_box
                 .reorder_child_after(&revealer, None::<&gtk4::Widget>);
