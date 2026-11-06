@@ -1379,8 +1379,10 @@ mod imp {
                     self.canvas_rotate_gesture.connect_cancel(clone!(
                         #[weak(rename_to=canvaswrapper)]
                         obj,
-                        move |gesture, _event_sequence| {
-                            gesture.set_state(EventSequenceState::Denied);
+                        move |_gesture, _event_sequence| {
+                            // Don't set the gesture state here: the sequence is being cancelled and
+                            // GTK then reads its already removed event, which crashes (SIGSEGV in
+                            // gtk_widget_propagate_event_sequence_state).
                             let widget_flags = canvaswrapper
                                 .canvas()
                                 .engine_mut()
