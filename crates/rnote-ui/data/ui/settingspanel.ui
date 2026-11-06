@@ -146,7 +146,7 @@ gets disabled.</property>
                             </items>
                           </object>
                         </property>
-                        <property name="selected">1</property>
+                        <property name="selected">0</property>
                       </object>
                     </child>
                     <child>

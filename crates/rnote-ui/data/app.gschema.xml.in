@@ -188,7 +188,7 @@
         <choice value="left"/>
         <choice value="right"/>
       </choices>
-      <default>"right"</default>
+      <default>"left"</default>
       <summary>The side of the canvas the bookmarks panel is shown on</summary>
     </key>
     <key name="drawing-cursor" type="s">
