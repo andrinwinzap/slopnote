@@ -19,6 +19,7 @@
             <child>
               <object class="GtkButton">
                 <property name="css-classes">flat</property>
+                <property name="focus-on-click">false</property>
                 <property name="icon_name">plus-symbolic</property>
                 <property name="tooltip_text" translatable="yes">Add Bookmark for the Current View</property>
                 <property name="action-name">win.add-bookmark</property>
@@ -27,6 +28,7 @@
             <child>
               <object class="GtkButton">
                 <property name="css-classes">flat</property>
+                <property name="focus-on-click">false</property>
                 <property name="icon_name">dir-up-symbolic</property>
                 <property name="tooltip_text" translatable="yes">Jump to the Previous Bookmark</property>
                 <property name="action-name">win.bookmark-prev</property>
@@ -35,6 +37,7 @@
             <child>
               <object class="GtkButton">
                 <property name="css-classes">flat</property>
+                <property name="focus-on-click">false</property>
                 <property name="icon_name">dir-down-symbolic</property>
                 <property name="tooltip_text" translatable="yes">Jump to the Next Bookmark</property>
                 <property name="action-name">win.bookmark-next</property>
@@ -43,6 +46,7 @@
             <child>
               <object class="GtkButton">
                 <property name="css-classes">flat</property>
+                <property name="focus-on-click">false</property>
                 <property name="icon_name">edit-undo-symbolic</property>
                 <property name="tooltip_text" translatable="yes">Jump Back to the Previous View</property>
                 <property name="action-name">win.bookmark-jump-back</property>

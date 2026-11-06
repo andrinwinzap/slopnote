@@ -289,6 +289,22 @@ impl RnAppWindow {
         self.imp().bookmarks_panel.get()
     }
 
+    /// Give the keyboard focus to the canvas of the active tab once the current event is handled.
+    ///
+    /// The window-wide shortcuts (e.g. the bookmark ones) don't work reliably while
+    /// another widget, like a button, holds the focus.
+    pub(crate) fn focus_active_canvas(&self) {
+        glib::idle_add_local_once(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move || {
+                if let Some(canvas) = appwindow.active_tab_canvas() {
+                    canvas.grab_focus();
+                }
+            }
+        ));
+    }
+
     /// Show the bookmarks panel on the left (`true`) or right side of the canvas.
     pub(crate) fn set_bookmarks_panel_left(&self, left: bool) {
         let imp = self.imp();
@@ -311,7 +327,12 @@ impl RnAppWindow {
                 old_box.remove(&toggle);
             }
             if left {
+                // Before the focus mode button, which is the last one.
+                let focus_mode_button = target_box.last_child();
                 target_box.append(&toggle);
+                if let Some(focus_mode_button) = focus_mode_button {
+                    target_box.reorder_child_after(&focus_mode_button, Some(&toggle));
+                }
             } else {
                 target_box.prepend(&toggle);
             }
@@ -348,6 +369,8 @@ impl RnAppWindow {
             move |row| appwindow.set_bookmarks_panel_left(row.selected() == 0)
         ));
         self.set_bookmarks_panel_left(side_row.selected() == 0);
+        // Without this, the first focusable widget, e.g. a toast button, gets the focus on startup.
+        self.connect_map(|appwindow| appwindow.focus_active_canvas());
         imp.main_header.get().init(self);
 
         // actions and settings AFTER widget inits

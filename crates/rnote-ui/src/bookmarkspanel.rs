@@ -287,6 +287,7 @@ impl RnBookmarksPanel {
                 .tooltip_text(gettext("Rename Bookmark"))
                 .valign(Align::Center)
                 .css_classes(["flat"])
+                .focus_on_click(false)
                 .build();
             rename_button.connect_clicked(clone!(
                 #[weak(rename_to=panel)]
@@ -303,6 +304,7 @@ impl RnBookmarksPanel {
                 .tooltip_text(gettext("Remove Bookmark"))
                 .valign(Align::Center)
                 .css_classes(["flat"])
+                .focus_on_click(false)
                 .build();
             remove_button.set_action_name(Some("win.remove-bookmark-at"));
             remove_button.set_action_target_value(Some(&(engine_index as u32).to_variant()));
@@ -326,7 +328,10 @@ impl RnBookmarksPanel {
             row_box.append(&preview);
             row_box.append(&footer_box);
 
-            let row = ListBoxRow::builder().child(&row_box).build();
+            let row = ListBoxRow::builder()
+                .child(&row_box)
+                .focus_on_click(false)
+                .build();
             row.set_action_name(Some("win.jump-to-bookmark"));
             row.set_action_target_value(Some(&(engine_index as u32).to_variant()));
 
@@ -405,6 +410,7 @@ impl RnBookmarksPanel {
                 }
                 popover.popdown();
                 panel.refresh();
+                appwindow.focus_active_canvas();
             }
         ));
 
