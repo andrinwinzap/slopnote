@@ -51,10 +51,16 @@ pub(crate) fn handle_pointer_controller_event(
     if is_stylus {
         stylus_active = gdk_event_type != gdk::EventType::ProximityOut;
         canvas.imp().last_pen_position.set(event.position());
+        canvas.imp().last_pen_event.set(Some(now));
     } else if stylus_active {
         // A deliberate mouse click hands control back to the mouse.
         match gdk_event_type {
             gdk::EventType::ButtonPress | gdk::EventType::ButtonRelease => {
+                stylus_active = false;
+            }
+            // The pen often leaves without saying so, and touch would then stay ignored for good.
+            // Touches while the pen is still sending events are the palm resting while writing.
+            gdk::EventType::TouchBegin if pen_went_quiet(canvas, now) => {
                 stylus_active = false;
             }
             _ => {
@@ -372,6 +378,18 @@ pub(crate) fn reject_pointer_input(event: &gdk::Event, touch_drawing: bool) -> b
 fn event_is_stylus(event: &gdk::Event) -> bool {
     // As in gtk4 'gtkgesturestylus.c:106' we detect if the pointer is a stylus when it has a device tool
     event.device_tool().is_some()
+}
+
+/// How long the pen has to be silent before a touch counts as a finger and not as the palm.
+const TOUCH_AFTER_PEN_DELAY: Duration = Duration::from_millis(500);
+
+/// Whether the pen has not sent anything for long enough that it has likely left.
+fn pen_went_quiet(canvas: &RnCanvas, now: Instant) -> bool {
+    canvas
+        .imp()
+        .last_pen_event
+        .get()
+        .is_none_or(|last| now.saturating_duration_since(last) >= TOUCH_AFTER_PEN_DELAY)
 }
 
 /// How far from where the pen last was mouse motion has to be to be the mouse moving, in pixels.
