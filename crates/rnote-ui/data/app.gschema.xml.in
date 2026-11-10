@@ -145,6 +145,10 @@
       <default>true</default>
       <summary>allow rotating the canvas</summary>
     </key>
+    <key name="free-panning" type="b">
+      <default>false</default>
+      <summary>allow moving the view freely over pages of limited width</summary>
+    </key>
     <key name="exclusive-zoom-rotation" type="b">
       <default>true</default>
       <summary>a two-finger gesture either zooms or rotates the canvas, not both</summary>

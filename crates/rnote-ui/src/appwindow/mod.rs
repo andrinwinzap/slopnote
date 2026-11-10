@@ -172,6 +172,10 @@ impl RnAppWindow {
         self.property::<bool>("canvas-rotation")
     }
 
+    pub(crate) fn free_panning(&self) -> bool {
+        self.property::<bool>("free-panning")
+    }
+
     #[allow(unused)]
     pub(crate) fn exclusive_zoom_rotation(&self) -> bool {
         self.property::<bool>("exclusive-zoom-rotation")
@@ -464,6 +468,13 @@ impl RnAppWindow {
         if widget_flags.refresh_canvasmenu {
             let total_zoom = canvas.engine_ref().camera.total_zoom();
             let rotation = canvas.engine_ref().camera.rotation();
+
+            if let Some(wrapper) = canvas
+                .ancestor(RnCanvasWrapper::static_type())
+                .and_downcast::<RnCanvasWrapper>()
+            {
+                wrapper.update_scrollbars_visible();
+            }
 
             self.main_header()
                 .canvasmenu()

@@ -373,7 +373,9 @@ impl Engine {
     /// Imports an engine snapshot. A save file should always be loaded with this method.
     pub fn load_snapshot(&mut self, snapshot: EngineSnapshot) -> WidgetFlags {
         self.document = snapshot.document.extract_snapshot_data();
+        let free_panning = self.camera.free_panning();
         self.camera = snapshot.camera.extract_snapshot_data();
+        self.camera.set_free_panning(free_panning);
         let mut widget_flags = self.store.import_from_snapshot(&snapshot)
             | self.doc_resize_autoexpand()
             | self.current_pen_update_state()

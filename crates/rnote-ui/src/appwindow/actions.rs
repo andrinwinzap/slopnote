@@ -213,6 +213,8 @@ impl RnAppWindow {
         let action_canvas_rotation =
             gio::PropertyAction::new("canvas-rotation", self, "canvas-rotation");
         self.add_action(&action_canvas_rotation);
+        let action_free_panning = gio::PropertyAction::new("free-panning", self, "free-panning");
+        self.add_action(&action_free_panning);
         let action_exclusive_zoom_rotation =
             gio::PropertyAction::new("exclusive-zoom-rotation", self, "exclusive-zoom-rotation");
         self.add_action(&action_exclusive_zoom_rotation);
@@ -834,6 +836,16 @@ impl RnAppWindow {
         sync_canvas_rotation(self);
         self.connect_notify_local(Some("canvas-rotation"), move |appwindow, _| {
             sync_canvas_rotation(appwindow);
+        });
+
+        self.connect_notify_local(Some("free-panning"), |appwindow, _| {
+            let free_panning = appwindow.free_panning();
+            for wrapper in appwindow.get_all_tabs() {
+                let canvas = wrapper.canvas();
+                canvas.engine_mut().camera.set_free_panning(free_panning);
+                // The layout limits the view and updates the scrollable area again.
+                canvas.queue_resize();
+            }
         });
 
         // Rotation reset

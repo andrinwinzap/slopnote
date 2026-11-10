@@ -64,6 +64,10 @@ pub struct Camera {
     #[serde(skip)]
     scale_factor: f64,
 
+    /// Whether the view can move freely over pages of limited width, instead of being locked to them.
+    #[serde(skip)]
+    free_panning: bool,
+
     #[serde(skip)]
     zoom_task_handle: Option<crate::tasks::OneOffTaskHandle>,
 }
@@ -79,6 +83,7 @@ impl Default for Camera {
             temporary_zoom: 1.0,
             surface_origin: Vector2::ZERO,
             scale_factor: 1.0,
+            free_panning: false,
             zoom_task_handle: None,
         }
     }
@@ -147,19 +152,108 @@ impl Camera {
     pub fn set_offset(&mut self, offset: Vector2, doc: &Document) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
 
-        let (mins, maxs) = self.surface_mins_maxs(doc);
-        let offset_maxs = Vector2::new(
-            (maxs.x - self.size.x).max(mins.x),
-            (maxs.y - self.size.y).max(mins.y),
-        );
+        self.offset = if let Some((center_mins, center_maxs)) = self.page_center_range(doc) {
+            let doc_to_view = self.document_to_view_transform();
+            let center = doc_to_view
+                .inverse()
+                .transform_point2(offset + self.size * 0.5)
+                .clamp(center_mins, center_maxs);
+            doc_to_view.transform_point2(center) - self.size * 0.5
+        } else {
+            let (mins, maxs) = self.surface_mins_maxs(doc);
+            let offset_maxs = Vector2::new(
+                (maxs.x - self.size.x).max(mins.x),
+                (maxs.y - self.size.y).max(mins.y),
+            );
 
-        self.offset = Vector2::new(
-            offset.x.clamp(mins.x, offset_maxs.x),
-            offset.y.clamp(mins.y, offset_maxs.y),
-        );
+            Vector2::new(
+                offset.x.clamp(mins.x, offset_maxs.x),
+                offset.y.clamp(mins.y, offset_maxs.y),
+            )
+        };
 
         widget_flags.view_modified = true;
         widget_flags
+    }
+
+    /// Whether the view can move freely over pages of limited width.
+    pub fn free_panning(&self) -> bool {
+        self.free_panning
+    }
+
+    pub fn set_free_panning(&mut self, free_panning: bool) {
+        self.free_panning = free_panning;
+    }
+
+    /// The range of the viewport center in document coordinates, along the axes of the page.
+    ///
+    /// Limiting the view in screen axes would make the limit jump open as soon as the page is
+    /// rotated, because the upright box around a rotated page is a lot larger than the page.
+    ///
+    /// None when the view is limited in screen axes: in layouts that aren't limited, and when level
+    /// and locked, where both ways are the same.
+    fn page_center_range(&self, doc: &Document) -> Option<(Vector2, Vector2)> {
+        let limited_width = matches!(
+            doc.config.layout,
+            Layout::FixedSize | Layout::ContinuousVertical
+        );
+        let free_panning = self.free_panning && doc.config.layout != Layout::Infinite;
+        if !free_panning && (!limited_width || self.rotation == 0.0) {
+            return None;
+        }
+
+        let zoom = self.total_zoom();
+        let overshoot = Vector2::new(Self::OVERSHOOT_HORIZONTAL, Self::OVERSHOOT_VERTICAL);
+        let (cos, sin) = (self.rotation.cos().abs(), self.rotation.sin().abs());
+        let (cos2, sin2) = (cos * cos, sin * sin);
+        let half_size = self.size * 0.5;
+        // How far the view reaches along the axes of the page, in surface pixels.
+        let mut reach = Vector2::new(
+            half_size.x * cos2 + half_size.y * sin2,
+            half_size.x * sin2 + half_size.y * cos2,
+        );
+
+        if free_panning {
+            // An edge of the page can go up to the far side of the view, so any part of the page can
+            // be moved to where it is comfortable to write. A bit of the page stays in view, so
+            // the view can't get lost in empty space.
+            let past_edge = (reach - overshoot).max(Vector2::ZERO) / zoom;
+            let page = doc.bounds();
+            return Some((page.mins - past_edge, page.maxs + past_edge));
+        }
+
+        let bounds = doc.bounds().extend_by(overshoot / zoom);
+        let page_half = bounds.extents() * 0.5 * zoom;
+        let lock_x = reach.x >= page_half.x;
+        let lock_y = reach.y >= page_half.y;
+
+        // Reduced so that the corners of a tilted page can still be brought into view. An axis
+        // that is locked keeps its lock, only the other one gets the room for it.
+        let free_along = |locked: f64, reach: f64, sin: f64, cos: f64| {
+            let limit = ((half_size.x - cos * locked) / sin.max(1e-9))
+                .min((half_size.y - sin * locked) / cos.max(1e-9));
+            limit.clamp(0.0, reach)
+        };
+        match (lock_x, lock_y) {
+            (true, false) => reach.y = free_along(page_half.x, reach.y, sin, cos),
+            (false, true) => reach.x = free_along(page_half.y, reach.x, cos, sin),
+            (false, false) => {
+                reach /= ((cos * reach.x + sin * reach.y) / half_size.x)
+                    .max((sin * reach.x + cos * reach.y) / half_size.y)
+                    .max(1.0);
+            }
+            (true, true) => {}
+        }
+
+        // A page that fits stays in the middle, as it does when level, where the canvas widget is
+        // only as wide as the page and gets centered in the window.
+        let center = bounds.center();
+        let travel = (bounds.extents() * 0.5 - reach / zoom).max(Vector2::ZERO);
+        let travel = Vector2::new(
+            if lock_x { 0.0 } else { travel.x },
+            if lock_y { 0.0 } else { travel.y },
+        );
+        Some((center - travel, center + travel))
     }
 
     /// The minimum and maximum surface bounds (document including overshoot) in surface coordinate space.
@@ -177,8 +271,25 @@ impl Camera {
             }
             Layout::Infinite => document_bounds,
         };
+        let (mut mins, mut maxs) = (bounds.mins, bounds.maxs);
 
-        (bounds.mins, bounds.maxs)
+        // The scrollable area has to include everywhere the view can go.
+        if let Some((center_mins, center_maxs)) = self.page_center_range(doc) {
+            let doc_to_view = self.document_to_view_transform();
+            let half_size = self.size * 0.5;
+            for corner in [
+                center_mins,
+                Vector2::new(center_maxs.x, center_mins.y),
+                Vector2::new(center_mins.x, center_maxs.y),
+                center_maxs,
+            ] {
+                let center = doc_to_view.transform_point2(corner);
+                mins = mins.min(center - half_size);
+                maxs = maxs.max(center + half_size);
+            }
+        }
+
+        (mins, maxs)
     }
 
     /// The current viewport size in surface coordinate space.
@@ -563,6 +674,199 @@ mod tests {
         let _ = camera.set_viewport_center(center);
 
         assert_relative_eq!(camera.viewport_center(), center, epsilon = 1e-9);
+    }
+
+    fn limited_doc() -> Document {
+        let mut doc = Document::default();
+        doc.config.layout = Layout::ContinuousVertical;
+        doc.width = 1000.0;
+        doc.height = 8000.0;
+        doc
+    }
+
+    /// Where the view ends up when trying to move it far in a direction.
+    fn pushed_center(camera: &mut Camera, doc: &Document, direction: Vector2) -> Vector2 {
+        let _ = camera.set_offset(camera.offset() + direction * 1e6, doc);
+        camera.viewport_center()
+    }
+
+    #[test]
+    fn level_and_locked_is_limited_as_before() {
+        let doc = limited_doc();
+        let mut camera = Camera::default().with_size(Vector2::new(1400.0, 900.0));
+        let _ = camera.set_offset(Vector2::new(5000.0, -5000.0), &doc);
+        assert_relative_eq!(
+            camera.offset(),
+            Vector2::splat(-Camera::OVERSHOOT_HORIZONTAL)
+        );
+    }
+
+    #[test]
+    fn rotated_page_that_fits_stays_locked_in_the_middle() {
+        let doc = limited_doc();
+        for degrees in [2.0_f64, 10.0, 30.0] {
+            let mut camera = Camera::default()
+                .with_size(Vector2::new(1400.0, 900.0))
+                .with_rotation(degrees.to_radians());
+            let (mins, maxs) = camera.page_center_range(&doc).unwrap();
+            assert_relative_eq!(mins.x, doc.x + doc.width * 0.5, epsilon = 1e-9);
+            assert_relative_eq!(maxs.x, doc.x + doc.width * 0.5, epsilon = 1e-9);
+            let right = pushed_center(&mut camera, &doc, Vector2::X);
+            let left = pushed_center(&mut camera, &doc, Vector2::NEG_X);
+            // Pushing sideways only slides the view along the page, never across it.
+            let across = |c: Vector2| c.x - (doc.x + doc.width * 0.5);
+            assert!(across(right).abs() < 1e-6 && across(left).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn corners_of_a_page_that_fits_are_reachable_when_rotated() {
+        let doc = limited_doc();
+        let size = Vector2::new(1400.0, 900.0);
+        for degrees in (0..360).step_by(15).filter(|d| d % 90 != 0).map(f64::from) {
+            let mut camera = Camera::default()
+                .with_size(size)
+                .with_rotation(degrees.to_radians());
+            let (mins, maxs) = camera.page_center_range(&doc).unwrap();
+            for (center_y, corner_y) in [(mins.y, doc.y), (maxs.y, doc.y + doc.height)] {
+                for (center_x, corner_x) in [(mins.x, doc.x), (maxs.x, doc.x + doc.width)] {
+                    let _ = camera.set_viewport_center(Vector2::new(center_x, center_y));
+                    let on_surface = camera
+                        .transform()
+                        .transform_point2(Vector2::new(corner_x, corner_y));
+                    assert!(
+                        on_surface.x > -1.0
+                            && on_surface.x < size.x + 1.0
+                            && on_surface.y > -1.0
+                            && on_surface.y < size.y + 1.0,
+                        "corner ({corner_x}, {corner_y}) at {degrees} degrees is at {on_surface}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rotated_page_still_moves_along_its_length() {
+        let doc = limited_doc();
+        let mut camera = Camera::default()
+            .with_size(Vector2::new(1400.0, 900.0))
+            .with_rotation(30_f64.to_radians());
+        let start = pushed_center(&mut camera, &doc, Vector2::NEG_Y);
+        let end = pushed_center(&mut camera, &doc, Vector2::Y);
+        assert!((end.y - start.y).abs() > 5000.0, "{start} to {end}");
+    }
+
+    #[test]
+    fn corners_are_reachable_when_rotated() {
+        let doc = limited_doc();
+        let size = Vector2::new(800.0, 600.0);
+        for degrees in (0..360).step_by(15).map(f64::from) {
+            let mut camera = Camera::default()
+                .with_size(size)
+                .with_zoom(3.0)
+                .with_rotation(degrees.to_radians());
+            let (mins, maxs) = camera.page_center_range(&doc).unwrap_or((
+                doc.bounds().mins + size / 6.0,
+                doc.bounds().maxs - size / 6.0,
+            ));
+            for corner_center in [
+                mins,
+                maxs,
+                Vector2::new(mins.x, maxs.y),
+                Vector2::new(maxs.x, mins.y),
+            ] {
+                let _ = camera.set_viewport_center(corner_center);
+                let page_corner = Vector2::new(
+                    if corner_center.x == mins.x {
+                        doc.x
+                    } else {
+                        doc.x + doc.width
+                    },
+                    if corner_center.y == mins.y {
+                        doc.y
+                    } else {
+                        doc.y + doc.height
+                    },
+                );
+                let on_surface = camera.transform().transform_point2(page_corner);
+                assert!(
+                    on_surface.x > -1.0
+                        && on_surface.x < size.x + 1.0
+                        && on_surface.y > -1.0
+                        && on_surface.y < size.y + 1.0,
+                    "corner {page_corner} at {degrees} degrees is at {on_surface}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn scrollable_area_contains_every_position() {
+        let doc = limited_doc();
+        for (free, degrees) in [(false, 30.0), (true, 0.0), (true, 45.0_f64)] {
+            let mut camera = Camera::default()
+                .with_size(Vector2::new(1400.0, 900.0))
+                .with_rotation(degrees.to_radians());
+            camera.set_free_panning(free);
+            for direction in [Vector2::X, Vector2::NEG_X, Vector2::Y, Vector2::NEG_Y] {
+                let _ = camera.set_offset(camera.offset() + direction * 1e6, &doc);
+                let (mins, maxs) = camera.surface_mins_maxs(&doc);
+                let offset = camera.offset();
+                assert!(offset.x >= mins.x - 1e-6 && offset.y >= mins.y - 1e-6);
+                assert!(offset.x + 1400.0 <= maxs.x + 1e-6 && offset.y + 900.0 <= maxs.y + 1e-6);
+            }
+        }
+    }
+
+    #[test]
+    fn free_panning_moves_a_page_edge_to_the_far_side_of_the_view() {
+        let size = Vector2::new(1400.0, 900.0);
+        for layout in [
+            Layout::FixedSize,
+            Layout::ContinuousVertical,
+            Layout::SemiInfinite,
+        ] {
+            let mut doc = limited_doc();
+            doc.config.layout = layout;
+            let mut camera = Camera::default().with_size(size);
+            camera.set_free_panning(true);
+
+            let right = pushed_center(&mut camera, &doc, Vector2::NEG_X);
+            let left_edge = camera.transform().transform_point2(Vector2::ZERO).x;
+            assert_relative_eq!(
+                left_edge,
+                size.x - Camera::OVERSHOOT_HORIZONTAL,
+                epsilon = 1e-6
+            );
+            assert!(right.x < 0.0, "{right}");
+
+            let _ = pushed_center(&mut camera, &doc, Vector2::X);
+            let right_edge = camera
+                .transform()
+                .transform_point2(Vector2::new(doc.width, 0.0))
+                .x;
+            assert_relative_eq!(right_edge, Camera::OVERSHOOT_HORIZONTAL, epsilon = 1e-6);
+        }
+    }
+
+    #[test]
+    fn free_panning_leaves_the_infinite_layout_alone() {
+        let mut doc = limited_doc();
+        doc.config.layout = Layout::Infinite;
+        let mut camera = Camera::default().with_size(Vector2::new(1400.0, 900.0));
+        camera.set_free_panning(true);
+        assert!(camera.page_center_range(&doc).is_none());
+    }
+
+    #[test]
+    fn locked_semi_infinite_stays_limited_in_screen_axes() {
+        let mut doc = limited_doc();
+        doc.config.layout = Layout::SemiInfinite;
+        let camera = Camera::default()
+            .with_size(Vector2::new(1400.0, 900.0))
+            .with_rotation(30_f64.to_radians());
+        assert!(camera.page_center_range(&doc).is_none());
     }
 
     #[test]

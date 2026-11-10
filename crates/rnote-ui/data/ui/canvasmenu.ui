@@ -52,6 +52,11 @@
             <attribute name="action">win.canvas-rotation</attribute>
           </item>
           <item>
+            <attribute name="label" translatable="yes">Free P_anning</attribute>
+            <attribute name="toggle" />
+            <attribute name="action">win.free-panning</attribute>
+          </item>
+          <item>
             <attribute name="label" translatable="yes">Either Zoom or Rotate With Two _Fingers</attribute>
             <attribute name="toggle" />
             <attribute name="action">win.exclusive-zoom-rotation</attribute>

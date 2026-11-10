@@ -64,6 +64,10 @@ impl RnAppWindow {
             .get_no_changes()
             .build();
         app_settings
+            .bind("free-panning", self, "free-panning")
+            .get_no_changes()
+            .build();
+        app_settings
             .bind("exclusive-zoom-rotation", self, "exclusive-zoom-rotation")
             .get_no_changes()
             .build();

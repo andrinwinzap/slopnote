@@ -595,9 +595,7 @@ mod imp {
                         .get::<bool>()
                         .expect("The value needs to be of type `bool`");
                     self.show_scrollbars.replace(show_scrollbars);
-
-                    self.scroller.hscrollbar().set_visible(show_scrollbars);
-                    self.scroller.vscrollbar().set_visible(show_scrollbars);
+                    self.obj().update_scrollbars_visible();
                 }
                 "block-pinch-zoom" => {
                     let block_pinch_zoom = value
@@ -1644,6 +1642,14 @@ impl RnCanvasWrapper {
     #[allow(unused)]
     fn appwindow(&self) -> Option<RnAppWindow> {
         self.root().and_downcast::<RnAppWindow>()
+    }
+
+    /// Scrollbars are hidden while the canvas is rotated, they can only move along the screen axes.
+    pub(crate) fn update_scrollbars_visible(&self) {
+        let imp = self.imp();
+        let visible = imp.show_scrollbars.get() && imp.canvas.engine_ref().camera.rotation() == 0.0;
+        imp.scroller.hscrollbar().set_visible(visible);
+        imp.scroller.vscrollbar().set_visible(visible);
     }
 
     /// Whether the canvas may be rotated.

@@ -28,6 +28,7 @@ pub(crate) struct RnAppWindow {
     pub(crate) block_pinch_zoom: Cell<bool>,
     pub(crate) respect_borders: Cell<bool>,
     pub(crate) canvas_rotation: Cell<bool>,
+    pub(crate) free_panning: Cell<bool>,
     pub(crate) exclusive_zoom_rotation: Cell<bool>,
     pub(crate) rotation_level_snap: Cell<f64>,
     pub(crate) zoom_lock_threshold: Cell<f64>,
@@ -84,6 +85,7 @@ impl Default for RnAppWindow {
             block_pinch_zoom: Cell::new(false),
             respect_borders: Cell::new(false),
             canvas_rotation: Cell::new(true),
+            free_panning: Cell::new(false),
             exclusive_zoom_rotation: Cell::new(true),
             rotation_level_snap: Cell::new(super::RnAppWindow::ROTATION_LEVEL_SNAP_DEFAULT),
             zoom_lock_threshold: Cell::new(super::RnAppWindow::ZOOM_LOCK_THRESHOLD_DEFAULT),
@@ -210,6 +212,9 @@ impl ObjectImpl for RnAppWindow {
                 glib::ParamSpecBoolean::builder("canvas-rotation")
                     .default_value(true)
                     .build(),
+                glib::ParamSpecBoolean::builder("free-panning")
+                    .default_value(false)
+                    .build(),
                 glib::ParamSpecBoolean::builder("exclusive-zoom-rotation")
                     .default_value(true)
                     .build(),
@@ -260,6 +265,7 @@ impl ObjectImpl for RnAppWindow {
             "block-pinch-zoom" => self.block_pinch_zoom.get().to_value(),
             "respect-borders" => self.respect_borders.get().to_value(),
             "canvas-rotation" => self.canvas_rotation.get().to_value(),
+            "free-panning" => self.free_panning.get().to_value(),
             "exclusive-zoom-rotation" => self.exclusive_zoom_rotation.get().to_value(),
             "rotation-level-snap" => self.rotation_level_snap.get().to_value(),
             "zoom-lock-threshold" => self.zoom_lock_threshold.get().to_value(),
@@ -358,6 +364,10 @@ impl ObjectImpl for RnAppWindow {
                 let canvas_rotation: bool =
                     value.get().expect("The value needs to be of type `bool`");
                 self.canvas_rotation.replace(canvas_rotation);
+            }
+            "free-panning" => {
+                let free_panning: bool = value.get().expect("The value needs to be of type `bool`");
+                self.free_panning.replace(free_panning);
             }
             "exclusive-zoom-rotation" => {
                 let exclusive_zoom_rotation: bool =
