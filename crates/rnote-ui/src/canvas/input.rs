@@ -269,6 +269,14 @@ pub(crate) fn handle_pointer_controller_event(
     }
 
     canvas.emit_handle_widget_flags(widget_flags);
+
+    if matches!(
+        gdk_event_type,
+        gdk::EventType::ButtonRelease | gdk::EventType::TouchEnd
+    ) {
+        canvas.activate_osk(event);
+    }
+
     (propagation, pen_state, stylus_active)
 }
 

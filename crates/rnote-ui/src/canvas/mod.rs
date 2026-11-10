@@ -1060,6 +1060,15 @@ impl RnCanvas {
         }
     }
 
+    /// Asks for the on-screen keyboard while text can be entered, as `GtkText` does when tapped.
+    pub(crate) fn activate_osk(&self, event: &gdk::Event) {
+        if self.imp().text_input_enabled.get() && self.has_focus() {
+            self.imp()
+                .key_controller_im_context
+                .activate_osk(Some(event));
+        }
+    }
+
     /// Switches between the regular and the drawing cursor
     pub(crate) fn enable_drawing_cursor(&self, drawing_cursor: bool) {
         if drawing_cursor == self.imp().drawing_cursor_enabled.get() {
