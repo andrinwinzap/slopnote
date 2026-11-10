@@ -2,10 +2,11 @@
 use crate::strokecontentpaintable::StrokeContentPaintable;
 use crate::workspacebrowser::widgethelper;
 use crate::{RnAppWindow, RnCanvas};
+use adw::prelude::*;
 use gettextrs::gettext;
 use gtk4::{
     Align, Button, CompositeTemplate, ContentFit, Entry, Label, ListBox, ListBoxRow, Picture,
-    Widget, glib, glib::clone, pango, prelude::*, subclass::prelude::*,
+    Widget, glib, glib::clone, pango, subclass::prelude::*,
 };
 use rnote_engine::document::Bookmark;
 use std::cell::{Cell, RefCell};
@@ -381,8 +382,8 @@ impl RnBookmarksPanel {
                 self,
                 #[strong(rename_to=name)]
                 bookmark.name,
-                move |button| {
-                    panel.rename_bookmark_dialog(button, engine_index, &name);
+                move |_| {
+                    panel.rename_bookmark_dialog(engine_index, &name);
                 }
             ));
 
@@ -444,13 +445,8 @@ impl RnBookmarksPanel {
         }
     }
 
-    /// Shows a small dialog popover on `parent` for renaming the bookmark at `engine_index`.
-    fn rename_bookmark_dialog(
-        &self,
-        parent: &impl IsA<Widget>,
-        engine_index: usize,
-        current_name: &str,
-    ) {
+    /// Shows a small dialog for renaming the bookmark at `engine_index`.
+    fn rename_bookmark_dialog(&self, engine_index: usize, current_name: &str) {
         let entry = Entry::builder()
             .text(current_name)
             .placeholder_text(gettext("Bookmark name"))
@@ -464,23 +460,13 @@ impl RnBookmarksPanel {
             .build();
         label.add_css_class("title-4");
 
-        let (apply_button, popover) = widgethelper::create_entry_dialog(&entry, &label);
-        popover.set_parent(parent);
-        popover.connect_closed(|popover| {
-            glib::idle_add_local_once(clone!(
-                #[weak]
-                popover,
-                move || {
-                    popover.unparent();
-                }
-            ));
-        });
+        let (apply_button, dialog) = widgethelper::create_entry_dialog(&entry, &label);
 
         apply_button.connect_clicked(clone!(
             #[weak(rename_to=panel)]
             self,
             #[weak]
-            popover,
+            dialog,
             #[weak]
             entry,
             move |_| {
@@ -495,14 +481,15 @@ impl RnBookmarksPanel {
                         appwindow.handle_widget_flags(widget_flags, &canvas);
                     }
                 }
-                popover.popdown();
+                dialog.close();
                 panel.refresh();
                 appwindow.focus_active_canvas();
             }
         ));
 
-        popover.popup();
-        entry.grab_focus();
+        if let Some(appwindow) = self.imp().appwindow.upgrade() {
+            dialog.present(Some(&appwindow));
+        }
     }
 }
 

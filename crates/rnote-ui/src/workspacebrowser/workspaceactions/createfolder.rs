@@ -1,8 +1,9 @@
 // Imports
 use crate::workspacebrowser::widgethelper;
 use crate::{RnAppWindow, RnWorkspaceBrowser};
+use adw::prelude::*;
 use gettextrs::gettext;
-use gtk4::{Align, Entry, Label, gio, glib, glib::clone, pango, prelude::*};
+use gtk4::{Align, Entry, Label, gio, glib, glib::clone, pango};
 use tracing::{debug, warn};
 
 /// Create a new `create_folder` action.
@@ -21,13 +22,11 @@ pub(crate) fn create_folder(
             if let Some(parent_path) = workspacebrowser.dir_list_file().and_then(|f| f.path()) {
                 let folder_name_entry = create_folder_name_entry();
                 let dialog_title_label = create_dialog_title_label();
-                let (apply_button, popover) =
+                let (apply_button, dialog) =
                     widgethelper::create_entry_dialog(&folder_name_entry, &dialog_title_label);
 
                 // at first don't allow applying, since the user did not enter any text yet.
                 apply_button.set_sensitive(false);
-
-                workspacebrowser.dir_controls_actions_box().append(&popover);
 
                 folder_name_entry.connect_changed(clone!(
                     #[weak]
@@ -51,7 +50,7 @@ pub(crate) fn create_folder(
 
                 apply_button.connect_clicked(clone!(
                     #[weak]
-                    popover,
+                    dialog,
                     #[weak]
                     folder_name_entry,
                     #[weak]
@@ -76,12 +75,12 @@ pub(crate) fn create_folder(
                                 debug!("Couldn't create folder, Err: {e:?}");
                             }
 
-                            popover.popdown();
+                            dialog.close();
                         }
                     }
                 ));
 
-                popover.popup();
+                dialog.present(Some(&appwindow));
             } else {
                 warn!("Can't create new folder when there currently is no workspace selected");
             }

@@ -156,10 +156,6 @@ impl RnWorkspaceBrowser {
         self.imp().active_workspace_dir_label.clone()
     }
 
-    pub(crate) fn dir_controls_actions_box(&self) -> gtk4::Box {
-        self.imp().dir_controls_actions_box.clone()
-    }
-
     pub(crate) fn init(&self, appwindow: &RnAppWindow) {
         self.imp().workspacesbar.get().init(appwindow);
 

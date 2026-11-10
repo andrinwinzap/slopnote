@@ -1,8 +1,7 @@
 // Imports
+use adw::prelude::*;
 use gettextrs::gettext;
-use gtk4::{
-    Align, Button, Entry, Grid, Label, Popover, PositionType, glib, glib::clone, prelude::*,
-};
+use gtk4::{Align, Button, Entry, Grid, Label, glib, glib::clone};
 
 /// A template-function to create a simple dialog widget for an action:
 ///
@@ -17,12 +16,18 @@ use gtk4::{
 /// Just create the `apply` button and the label.
 /// Everything else is done in this function.
 ///
-/// Only `ApplyButton` and `Popover` are returned because you likely want to
+/// Only `ApplyButton` and the dialog are returned because you likely want to
 /// apply a connection to them.
-pub(crate) fn create_entry_dialog(entry: &Entry, label: &Label) -> (Button, Popover) {
+///
+/// This is a dialog inside the window and not a popover on purpose. A popover is a popup surface
+/// that the compositor dismisses when something else gets touched, and that includes the on-screen
+/// keyboard, so the keyboard would close as soon as it gets used.
+pub(crate) fn create_entry_dialog(entry: &Entry, label: &Label) -> (Button, adw::Dialog) {
     let grid = Grid::builder()
-        .margin_top(6)
-        .margin_bottom(6)
+        .margin_top(18)
+        .margin_bottom(18)
+        .margin_start(18)
+        .margin_end(18)
         .column_spacing(18)
         .row_spacing(6)
         .build();
@@ -42,18 +47,18 @@ pub(crate) fn create_entry_dialog(entry: &Entry, label: &Label) -> (Button, Popo
     grid.attach(&cancel_button, 0, 2, 1, 1);
     grid.attach(&apply_button, 1, 2, 1, 1);
 
-    let popover = Popover::builder()
-        .autohide(true)
-        .has_arrow(true)
-        .position(PositionType::Bottom)
+    let dialog = adw::Dialog::builder()
+        .child(&grid)
+        .follows_content_size(true)
+        .presentation_mode(adw::DialogPresentationMode::Floating)
         .build();
-    popover.set_child(Some(&grid));
+    dialog.set_focus(Some(entry));
 
     cancel_button.connect_clicked(clone!(
         #[weak]
-        popover,
+        dialog,
         move |_| {
-            popover.popdown();
+            dialog.close();
         }
     ));
 
@@ -66,5 +71,5 @@ pub(crate) fn create_entry_dialog(entry: &Entry, label: &Label) -> (Button, Popo
         }
     ));
 
-    (apply_button, popover)
+    (apply_button, dialog)
 }

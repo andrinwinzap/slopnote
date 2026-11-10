@@ -210,10 +210,6 @@ impl RnFileRow {
         self.imp().drag_source.clone()
     }
 
-    pub(crate) fn menubutton_box(&self) -> gtk4::Box {
-        self.imp().menubutton_box.get()
-    }
-
     pub(crate) fn init(&self, appwindow: &RnAppWindow) {
         self.setup_actions(appwindow);
 

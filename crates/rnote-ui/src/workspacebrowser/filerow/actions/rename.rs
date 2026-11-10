@@ -1,8 +1,9 @@
 // Imports
 use crate::RnAppWindow;
 use crate::workspacebrowser::{RnFileRow, widgethelper};
+use adw::prelude::*;
 use gettextrs::gettext;
-use gtk4::{Align, Entry, Label, gio, glib, glib::clone, pango, prelude::*};
+use gtk4::{Align, Entry, Label, gio, glib, glib::clone, pango};
 use std::path::Path;
 use tracing::{debug, error};
 use unicode_segmentation::UnicodeSegmentation;
@@ -27,8 +28,7 @@ pub(crate) fn rename(filerow: &RnFileRow, appwindow: &RnAppWindow) -> gio::Simpl
             };
             let entry = create_entry(&current_file_path);
             let label = create_label();
-            let (apply_button, popover) = widgethelper::create_entry_dialog(&entry, &label);
-            filerow.menubutton_box().append(&popover);
+            let (apply_button, dialog) = widgethelper::create_entry_dialog(&entry, &label);
 
             // Initially the file name is set to the same file name, so set the apply button insensitive first.
             apply_button.set_sensitive(false);
@@ -47,7 +47,7 @@ pub(crate) fn rename(filerow: &RnFileRow, appwindow: &RnAppWindow) -> gio::Simpl
 
             apply_button.connect_clicked(clone!(
                 #[weak]
-                popover,
+                dialog,
                 #[weak]
                 entry,
                 #[weak]
@@ -88,12 +88,30 @@ pub(crate) fn rename(filerow: &RnFileRow, appwindow: &RnAppWindow) -> gio::Simpl
                             }
                         ));
                     }
-                    popover.popdown();
+                    dialog.close();
                 }
             ));
 
-            popover.popup();
-            entry_text_select_stem(&entry);
+            // Getting the focus selects all of the text, so the stem can only be selected after it.
+            let focus_controller = gtk4::EventControllerFocus::new();
+            let stem_selected = std::cell::Cell::new(false);
+            focus_controller.connect_enter(clone!(
+                #[weak]
+                entry,
+                move |_| {
+                    if stem_selected.replace(true) {
+                        return;
+                    }
+                    glib::idle_add_local_once(clone!(
+                        #[weak]
+                        entry,
+                        move || entry_text_select_stem(&entry)
+                    ));
+                }
+            ));
+            entry.add_controller(focus_controller);
+
+            dialog.present(Some(&appwindow));
         }
     ));
     action
