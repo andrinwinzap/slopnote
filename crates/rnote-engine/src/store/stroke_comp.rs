@@ -53,6 +53,7 @@ impl StrokeStore {
     }
 
     /// All keys from the stroke components slotmap, unordered.
+    #[allow(unused)]
     pub(crate) fn keys_unordered(&self) -> Vec<StrokeKey> {
         self.stroke_components.keys().collect()
     }
