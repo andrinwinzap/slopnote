@@ -93,25 +93,16 @@ impl Engine {
             let total_zoom = self.camera.total_zoom();
             let mut rendernodes: Vec<gsk::RenderNode> = vec![];
 
-            if let Some(image) = &self.bookmark_indicator_image {
-                // Only create the texture once, it is expensive
-                let new_texture = match image.to_memtexture() {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error!(
-                            "Failed to generate memory-texture of bookmark indicator image, Err: {e:?}"
-                        );
-                        return widget_flags;
-                    }
-                };
-
-                if let Some(bookmark) = self
-                    .highlighted_bookmark
-                    .and_then(|i| self.document.bookmarks.get(i))
-                {
-                    rendernodes.push(
+            // This runs on every change of the view, so the texture is only made for an indicator
+            // that is shown.
+            if let Some((image, bookmark)) = self.bookmark_indicator_image.as_ref().zip(
+                self.highlighted_bookmark
+                    .and_then(|i| self.document.bookmarks.get(i)),
+            ) {
+                match image.to_memtexture() {
+                    Ok(texture) => rendernodes.push(
                         gsk::TextureNode::new(
-                            &new_texture,
+                            &texture,
                             &graphene::Rect::from_p2d_aabb(
                                 bookmark_indicator_bounds()
                                     .scaled(Vector2::splat(1.0 / total_zoom))
@@ -119,7 +110,10 @@ impl Engine {
                             ),
                         )
                         .upcast(),
-                    );
+                    ),
+                    Err(e) => error!(
+                        "Failed to generate memory-texture of bookmark indicator image, Err: {e:?}"
+                    ),
                 }
             }
 

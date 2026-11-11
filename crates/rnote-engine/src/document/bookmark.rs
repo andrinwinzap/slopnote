@@ -35,4 +35,10 @@ impl Bookmark {
     pub(crate) fn order_key(&self) -> (f64, f64) {
         (self.pos[1], self.pos[0])
     }
+
+    /// Orders bookmarks by their position in the document, without failing on positions that are not numbers.
+    pub(crate) fn order_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let (a, b) = (self.order_key(), other.order_key());
+        a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1))
+    }
 }

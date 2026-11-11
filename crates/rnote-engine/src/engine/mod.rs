@@ -222,6 +222,9 @@ pub struct Engine {
     // used for jumping back to it.
     #[serde(skip)]
     view_before_bookmark_jump: Option<Bookmark>,
+    /// Where the most recent bookmark jump went, to continue from that bookmark even when the
+    /// view could not be centered on it.
+    last_bookmark_jump_pos: Option<Vector2>,
     // Bookmark indicator rendering
     //
     // Only the currently highlighted bookmark (e.g. hovered in the UI) gets an indicator drawn.
@@ -257,6 +260,7 @@ impl Default for Engine {
             #[cfg(feature = "ui")]
             origin_indicator_rendernode: None,
             view_before_bookmark_jump: None,
+            last_bookmark_jump_pos: None,
             highlighted_bookmark: None,
             bookmark_indicator_image: None,
             #[cfg(feature = "ui")]
@@ -677,7 +681,7 @@ impl Engine {
     pub fn add_bookmark(&mut self) -> WidgetFlags {
         let bookmark = Bookmark {
             pos: self.camera.viewport_center(),
-            zoom: self.camera.zoom(),
+            zoom: self.camera.total_zoom(),
             ..Default::default()
         };
         let merge_dist = Self::BOOKMARK_MERGE_DIST / self.camera.total_zoom();
@@ -738,9 +742,20 @@ impl Engine {
             return None;
         }
         let mut bookmarks = self.document.bookmarks.clone();
-        bookmarks.sort_by(|a, b| a.order_key().partial_cmp(&b.order_key()).unwrap());
+        bookmarks.sort_by(|a, b| a.order_cmp(b));
 
-        let center = self.camera.viewport_center();
+        let mut center = self.camera.viewport_center();
+        // The view is limited to the document after a jump, so it is not always centered on the
+        // bookmark it went to. When it still is where that jump left it, it counts as being there.
+        if let Some(target) = self.last_bookmark_jump_pos {
+            let mut camera = self.camera.clone();
+            let _ = camera.set_viewport_center(target);
+            let offset = camera.offset();
+            let _ = camera.set_offset(offset, &self.document);
+            if (camera.viewport_center() - center).length() <= POS_TOLERANCE {
+                center = target;
+            }
+        }
         let current_key = (center[1], center[0]);
         let target = if forward {
             bookmarks
@@ -769,7 +784,7 @@ impl Engine {
             .cloned()
             .enumerate()
             .collect();
-        bookmarks.sort_by(|(_, a), (_, b)| a.order_key().partial_cmp(&b.order_key()).unwrap());
+        bookmarks.sort_by(|(_, a), (_, b)| a.order_cmp(b));
         bookmarks
     }
 
@@ -834,11 +849,18 @@ impl Engine {
     fn jump_to_bookmark(&mut self, bookmark: Bookmark) -> WidgetFlags {
         self.view_before_bookmark_jump = Some(Bookmark {
             pos: self.camera.viewport_center(),
-            zoom: self.camera.zoom(),
+            zoom: self.camera.total_zoom(),
             ..Default::default()
         });
+        self.last_bookmark_jump_pos = Some(bookmark.pos);
 
-        let mut widget_flags = self.zoom_w_timeout(bookmark.zoom);
+        // Zooming renders every stroke again, which is only needed when the zoom changes.
+        let zoom = bookmark.zoom.clamp(Camera::ZOOM_MIN, Camera::ZOOM_MAX);
+        let mut widget_flags = if (zoom - self.camera.total_zoom()).abs() > f64::EPSILON * zoom {
+            self.zoom_w_timeout(zoom)
+        } else {
+            WidgetFlags::default()
+        };
         widget_flags |= self.camera.set_viewport_center(bookmark.pos);
         widget_flags |= self.doc_expand_autoexpand();
         widget_flags | self.update_rendering_current_viewport()
