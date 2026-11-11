@@ -838,11 +838,26 @@ impl RnAppWindow {
                             (false, Some(active_wrapper)) => (false, active_wrapper),
                         };
 
+                    let pristine = |wrapper: &RnCanvasWrapper| {
+                        wrapper.canvas().empty() && !wrapper.canvas().unsaved_changes()
+                    };
+                    let was_pristine = pristine(&wrapper);
+
                     let (bytes, _) = input_file.load_bytes_future().await?;
+                    let engine_snapshot =
+                        rnote_engine::engine::EngineSnapshot::load_from_rnote_bytes(bytes.to_vec())
+                            .await?;
+                    // Reading a large file takes a while. What was drawn on the empty tab in the
+                    // meantime is kept, and the file opens in a tab of its own.
+                    let (rnote_file_new_tab, wrapper) =
+                        if !rnote_file_new_tab && was_pristine && !pristine(&wrapper) {
+                            (true, self.new_canvas_wrapper())
+                        } else {
+                            (rnote_file_new_tab, wrapper)
+                        };
                     let widget_flags = wrapper
                         .canvas()
-                        .load_in_rnote_bytes(bytes.to_vec(), input_file.path())
-                        .await?;
+                        .load_in_snapshot(engine_snapshot, input_file.path());
                     if rnote_file_new_tab {
                         self.append_wrapper_new_tab(&wrapper);
                     }

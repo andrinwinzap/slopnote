@@ -31,6 +31,21 @@ impl RnCanvas {
         P: AsRef<Path>,
     {
         let engine_snapshot = EngineSnapshot::load_from_rnote_bytes(bytes).await?;
+        Ok(self.load_in_snapshot(engine_snapshot, file_path))
+    }
+
+    /// Replaces the document with the given loaded one.
+    ///
+    /// Not async, so that nothing can happen on the canvas between deciding to replace what is on
+    /// it and replacing it.
+    pub(crate) fn load_in_snapshot<P>(
+        &self,
+        engine_snapshot: EngineSnapshot,
+        file_path: Option<P>,
+    ) -> WidgetFlags
+    where
+        P: AsRef<Path>,
+    {
         let mut widget_flags = self.engine_mut().load_snapshot(engine_snapshot);
         widget_flags |= self
             .engine_mut()
@@ -41,7 +56,7 @@ impl RnCanvas {
         self.set_unsaved_changes(false);
         self.set_empty(false);
 
-        Ok(widget_flags)
+        widget_flags
     }
 
     /// Reload the engine from the file that is set as origin file.
@@ -290,6 +305,9 @@ impl RnCanvas {
             self.set_save_in_progress(false);
             anyhow::anyhow!("Could not retrieve basename for file: `{file:?}`.")
         })?;
+        // What gets written is the document as it is now. Writing takes a while on large
+        // documents, and what is drawn in the meantime is not in the file.
+        let modifications_at_snapshot = self.modifications();
         let rnote_bytes_receiver = self
             .engine_ref()
             .save_as_rnote_bytes(basename.to_string_lossy().to_string());
@@ -328,8 +346,12 @@ impl RnCanvas {
             // first time or saving as another filename, until the subsequent save at least.
             self.set_output_file_expect_write(false);
         }
-        self.set_unsaved_changes(false);
         self.set_save_in_progress(false);
+        if self.modifications() != modifications_at_snapshot {
+            debug!("Document was changed while it was saved, it stays marked as unsaved");
+            return Ok(true);
+        }
+        self.set_unsaved_changes(false);
         if let Err(err) = self.discard_draft() {
             error!(
                 "Document draft '{}' could not be discarded: {err}",
@@ -338,6 +360,25 @@ impl RnCanvas {
         };
 
         Ok(true)
+    }
+
+    /// Saves the document to the given file, waiting for a save that is already in progress
+    /// instead of skipping this one.
+    ///
+    /// For saves the user asked for and relies on, like before closing: a save or draft save
+    /// already running may be to another file, or may have started before the last changes.
+    pub(crate) async fn save_document_to_file_waiting(
+        &self,
+        file: &gio::File,
+    ) -> anyhow::Result<()> {
+        loop {
+            while self.save_in_progress() {
+                gtk4::glib::timeout_future(std::time::Duration::from_millis(50)).await;
+            }
+            if self.save_document_to_file(file).await? {
+                return Ok(());
+            }
+        }
     }
 
     pub(crate) async fn export_doc(

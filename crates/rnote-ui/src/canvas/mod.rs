@@ -104,6 +104,9 @@ mod imp {
         pub(crate) output_file_modified_toast_singleton: glib::WeakRef<adw::Toast>,
         pub(crate) locked_tool_toast_singleton: glib::WeakRef<adw::Toast>,
         pub(crate) output_file_expect_write: Cell<bool>,
+        /// Counts the times the document was reported as changed, to tell after a save whether
+        /// it was changed again while it was being written.
+        pub(crate) modifications: Cell<u64>,
         pub(crate) save_in_progress: Cell<bool>,
         pub(crate) unsaved_changes: Cell<bool>,
         pub(crate) empty: Cell<bool>,
@@ -211,6 +214,7 @@ mod imp {
                 output_file_modified_toast_singleton: glib::WeakRef::new(),
                 locked_tool_toast_singleton: glib::WeakRef::new(),
                 output_file_expect_write: Cell::new(false),
+                modifications: Cell::new(0),
                 save_in_progress: Cell::new(false),
                 unsaved_changes: Cell::new(false),
                 empty: Cell::new(true),
@@ -849,6 +853,11 @@ impl RnCanvas {
     }
 
     #[allow(unused)]
+    /// How many times the document was reported as changed.
+    pub(crate) fn modifications(&self) -> u64 {
+        self.imp().modifications.get()
+    }
+
     pub(crate) fn set_output_file_expect_write(&self, expect_write: bool) {
         self.imp().output_file_expect_write.set(expect_write);
     }
@@ -872,6 +881,10 @@ impl RnCanvas {
 
     #[allow(unused)]
     pub(crate) fn set_unsaved_changes(&self, unsaved_changes: bool) {
+        if unsaved_changes {
+            let modifications = &self.imp().modifications;
+            modifications.set(modifications.get().wrapping_add(1));
+        }
         if self.imp().unsaved_changes.get() != unsaved_changes {
             self.set_property("unsaved-changes", unsaved_changes.to_value());
         }
@@ -1237,7 +1250,21 @@ impl RnCanvas {
             debug!(?event, expect_write=?canvas.output_file_expect_write(), msg="output file parent directory watcher event received");
 
             match event.kind {
-                EventKind::Create(_create_kind) => {}
+                EventKind::Create(_create_kind) => {
+                    // A program that replaces the file by moving a new one over it, like sync
+                    // tools and other editors do, shows up as the file being created. So do our
+                    // own saves, which are expected.
+                    let Some(event_path) = event.paths.first() else {
+                        return;
+                    };
+                    if !crate::utils::paths_abs_eq(file_path, event_path).unwrap_or(false)
+                        || canvas.output_file_expect_write()
+                    {
+                        return;
+                    }
+                    debug!("Output file was replaced by another program");
+                    dispatch_toast_reload_modified_file(appwindow, canvas);
+                }
                 EventKind::Modify(ModifyKind::Data(_data_change)) => {
                     let Some(event_path) = event.paths.first() else {
                         return;

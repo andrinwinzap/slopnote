@@ -61,16 +61,13 @@ pub(crate) async fn dialog_save_doc_as(appwindow: &RnAppWindow, canvas: &RnCanva
         Ok(selected_file) => {
             appwindow.overlays().progressbar_start_pulsing();
 
-            match canvas.save_document_to_file(&selected_file).await {
-                Ok(true) => {
+            // Waits for a save that is already in progress: it is to another file, or a draft.
+            match canvas.save_document_to_file_waiting(&selected_file).await {
+                Ok(()) => {
                     appwindow.overlays().dispatch_toast_text(
                         &gettext("Saved document successfully"),
                         crate::overlays::TEXT_TOAST_TIMEOUT_DEFAULT,
                     );
-                    appwindow.overlays().progressbar_finish();
-                }
-                Ok(false) => {
-                    // Saving was already in progress
                     appwindow.overlays().progressbar_finish();
                 }
                 Err(e) => {

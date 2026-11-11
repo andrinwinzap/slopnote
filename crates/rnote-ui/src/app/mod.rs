@@ -153,7 +153,25 @@ mod imp {
                         appwindow.open_file_w_dialogs(input_file, None, false).await;
                     }
                     // Recover drafts, if present.
-                    let drafts = crate::utils::find_drafts();
+                    // The drafts of documents that are open in a window are in use, not left
+                    // behind: recovering or discarding them would take them from under that window.
+                    let drafts_in_use = appwindow
+                        .application()
+                        .map(|app| app.windows())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|window| window.downcast::<RnAppWindow>().ok())
+                        .flat_map(|window| window.get_all_tabs())
+                        .map(|wrapper| wrapper.canvas().draft_file_name())
+                        .collect::<Vec<String>>();
+                    let drafts = crate::utils::find_drafts()
+                        .into_iter()
+                        .filter(|draft| {
+                            !draft.file_name().is_some_and(|name| {
+                                drafts_in_use.iter().any(|in_use| name == in_use.as_str())
+                            })
+                        })
+                        .collect::<Vec<_>>();
                     if !drafts.is_empty() {
                         dialogs::dialog_recover_drafts(&appwindow, drafts).await;
                     }

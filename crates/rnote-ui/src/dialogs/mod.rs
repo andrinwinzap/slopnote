@@ -400,7 +400,7 @@ pub(crate) async fn dialog_close_window(appwindow: &RnAppWindow) {
                     .unwrap()
                     .canvas();
 
-                if let Err(e) = canvas.save_document_to_file(&save_file).await {
+                if let Err(e) = canvas.save_document_to_file_waiting(&save_file).await {
                     close = false;
                     error!("Saving document failed before closing window, Err: `{e:?}`");
                     canvas.set_output_file(None);
@@ -473,18 +473,36 @@ pub(crate) async fn dialog_recover_drafts(appwindow: &RnAppWindow, found_drafts:
                     canvas.set_unsaved_changes(true);
                     canvas.set_output_file(None);
 
-                    #[allow(clippy::collapsible_if)]
-                    if appwindow.autosave() {
-                        if let Err(err) = canvas.save_draft().await {
-                            error!(
-                                "Saving recovered draft '{}' as new draft '{}' failed.",
-                                draft.display(),
-                                canvas.draft_file_name()
-                            );
+                    // The recovered document only exists in the draft until it is saved, so the
+                    // draft it came from is only removed once the new one is written. Also without
+                    // autosave, where the new draft is all that protects it.
+                    let mut redrafted = false;
+                    for _ in 0..100 {
+                        match canvas.save_draft().await {
+                            Ok(true) => {
+                                redrafted = true;
+                                break;
+                            }
+                            // Another save is in progress
+                            Ok(false) => {
+                                glib::timeout_future(std::time::Duration::from_millis(50)).await
+                            }
+                            Err(err) => {
+                                error!(
+                                    "Saving recovered draft '{}' as new draft '{}' failed: {err:?}",
+                                    draft.display(),
+                                    canvas.draft_file_name()
+                                );
+                                break;
+                            }
                         }
                     }
-                    debug!("Removing recovered draft '{}'..", draft.display());
-                    if let Err(err) = fs::remove_file(draft) {
+                    if !redrafted {
+                        info!(
+                            "Keeping recovered draft '{}', it could not be saved as a new one",
+                            draft.display()
+                        );
+                    } else if let Err(err) = fs::remove_file(draft) {
                         error!("Removing recovered draft '{}' failed.", draft.display());
                     } else {
                         debug!("Removed recovered draft '{}'", draft.display());
