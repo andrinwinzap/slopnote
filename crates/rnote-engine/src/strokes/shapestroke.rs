@@ -93,7 +93,13 @@ impl AxisTicks {
     pub const COUNT_MAX: u32 = 50;
     /// The most ticks one axis can have, which can be more than [Self::COUNT_MAX] with constant
     /// spacing on axes of different length.
-    const AXIS_COUNT_MAX: u32 = 1000;
+    const AXIS_COUNT_MAX: u32 = 300;
+    /// The most ticks an axis is ever drawn with, whatever a file says: every tick is a text layout
+    /// and a hitbox, and a damaged file must not ask for billions of them.
+    const AXIS_COUNT_DRAWN_MAX: u32 = 1000;
+    /// The smallest distance between ticks with the same spacing on all axes. One very short axis
+    /// would otherwise fill the long ones with ticks that can't be told apart.
+    const CONSTANT_SPACING_MIN: f64 = 2.0;
     pub const LABEL_EVERY_MIN: u32 = 1;
     pub const LABEL_EVERY_MAX: u32 = 20;
     pub const FONT_SIZE_MIN: f64 = 4.0;
@@ -153,7 +159,7 @@ impl AxisTicks {
         if !constant_spacing || !shortest.is_finite() || shortest <= 0.0 {
             return lengths.iter().map(|_| (count, None)).collect();
         }
-        let spacing = shortest / count as f64;
+        let spacing = (shortest / count as f64).max(Self::CONSTANT_SPACING_MIN);
         lengths
             .iter()
             .map(|&length| {
@@ -162,7 +168,10 @@ impl AxisTicks {
                 }
                 // Tolerate rounding, so that a tick lands on the tip of axes of the same length
                 let axis_count = ((length / spacing) + 1e-6).floor() as u32;
-                (axis_count.max(Self::COUNT_MIN), Some(spacing / length))
+                (
+                    axis_count.clamp(Self::COUNT_MIN, Self::AXIS_COUNT_MAX),
+                    Some(spacing / length),
+                )
             })
             .collect()
     }
@@ -208,8 +217,12 @@ impl AxisTicks {
         let normal = Vector2::new(-unit.y, unit.x);
         // Numbers go below horizontal and left of vertical axes.
         let horizontal = unit.x.abs() >= unit.y.abs();
-        let count = self.count.max(1);
-        let spacing_fraction = self.spacing_fraction.unwrap_or(1.0 / count as f64);
+        // Both come from the file, so neither is trusted here.
+        let count = self.count.clamp(1, Self::AXIS_COUNT_DRAWN_MAX);
+        let spacing_fraction = self
+            .spacing_fraction
+            .filter(|fraction| fraction.is_finite() && *fraction > 0.0)
+            .unwrap_or(1.0 / count as f64);
         let reach = self.tick_size + Self::LABEL_GAP;
         let mut text = piet_cairo::CairoText::new();
 
