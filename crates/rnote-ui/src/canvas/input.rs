@@ -60,7 +60,10 @@ pub(crate) fn handle_pointer_controller_event(
             }
             // The pen often leaves without saying so, and touch would then stay ignored for good.
             // Touches while the pen is still sending events are the palm resting while writing.
-            gdk::EventType::TouchBegin if pen_went_quiet(canvas, now) => {
+            // A pen that is down and held still is quiet too, and still there.
+            gdk::EventType::TouchBegin
+                if pen_state != PenState::Down && pen_went_quiet(canvas, now) =>
+            {
                 stylus_active = false;
             }
             _ => {
