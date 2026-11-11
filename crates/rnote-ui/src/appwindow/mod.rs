@@ -480,13 +480,16 @@ impl RnAppWindow {
                 wrapper.update_scrollbars_visible();
             }
 
-            self.main_header()
-                .canvasmenu()
-                .refresh_zoom_reset_label(total_zoom);
+            // The header shows the active tab, and flags also arrive for the other ones.
+            if self.active_tab_canvas().as_ref() == Some(canvas) {
+                self.main_header()
+                    .canvasmenu()
+                    .refresh_zoom_reset_label(total_zoom);
 
-            self.main_header()
-                .canvasmenu()
-                .refresh_rotation_reset_label(rotation);
+                self.main_header()
+                    .canvasmenu()
+                    .refresh_rotation_reset_label(rotation);
+            }
         }
         if widget_flags.update_old_viewport {
             let viewport = canvas.engine_ref().camera.viewport();
