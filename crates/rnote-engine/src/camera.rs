@@ -68,6 +68,10 @@ pub struct Camera {
     #[serde(skip)]
     free_panning: bool,
 
+    /// Whether the view may be rotated. Bookmark jumps leave the rotation alone when it may not.
+    #[serde(skip)]
+    rotation_enabled: bool,
+
     #[serde(skip)]
     zoom_task_handle: Option<crate::tasks::OneOffTaskHandle>,
 }
@@ -84,6 +88,7 @@ impl Default for Camera {
             surface_origin: Vector2::ZERO,
             scale_factor: 1.0,
             free_panning: false,
+            rotation_enabled: true,
             zoom_task_handle: None,
         }
     }
@@ -179,6 +184,14 @@ impl Camera {
     /// Whether the view can move freely over pages of limited width.
     pub fn free_panning(&self) -> bool {
         self.free_panning
+    }
+
+    pub fn rotation_enabled(&self) -> bool {
+        self.rotation_enabled
+    }
+
+    pub fn set_rotation_enabled(&mut self, rotation_enabled: bool) {
+        self.rotation_enabled = rotation_enabled;
     }
 
     pub fn set_free_panning(&mut self, free_panning: bool) {

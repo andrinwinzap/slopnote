@@ -689,6 +689,7 @@ impl Engine {
         let bookmark = Bookmark {
             pos: self.camera.viewport_center(),
             zoom: self.camera.total_zoom(),
+            rotation: self.camera.rotation(),
             ..Default::default()
         };
         let merge_dist = Self::BOOKMARK_MERGE_DIST / self.camera.total_zoom();
@@ -857,6 +858,7 @@ impl Engine {
         self.view_before_bookmark_jump = Some(Bookmark {
             pos: self.camera.viewport_center(),
             zoom: self.camera.total_zoom(),
+            rotation: self.camera.rotation(),
             ..Default::default()
         });
         self.last_bookmark_jump_pos = Some(bookmark.pos);
@@ -868,6 +870,9 @@ impl Engine {
         } else {
             WidgetFlags::default()
         };
+        if self.camera.rotation_enabled() && bookmark.rotation != self.camera.rotation() {
+            widget_flags |= self.camera.set_rotation(bookmark.rotation, 0.0);
+        }
         widget_flags |= self.camera.set_viewport_center(bookmark.pos);
         widget_flags |= self.doc_expand_autoexpand();
         widget_flags | self.update_rendering_current_viewport()
@@ -1275,6 +1280,37 @@ mod tests {
             assert!(engine.jump_to_adjacent_bookmark(false).is_some());
             assert_relative_eq!(engine.camera.viewport_center(), expected_pos);
         }
+    }
+
+    #[test]
+    fn bookmark_jump_restores_rotation() {
+        let mut engine = Engine::default();
+        let _ = engine.camera.set_rotation(std::f64::consts::FRAC_PI_2, 0.0);
+        let _ = engine
+            .camera
+            .set_viewport_center(Vector2::new(100.0, 100.0));
+        let _ = engine.add_bookmark();
+
+        let _ = engine.camera.set_rotation(0.0, 0.0);
+        let _ = engine
+            .camera
+            .set_viewport_center(Vector2::new(3000.0, 4000.0));
+        assert!(engine.jump_to_adjacent_bookmark(true).is_some());
+        assert_relative_eq!(engine.camera.rotation(), std::f64::consts::FRAC_PI_2);
+        assert_relative_eq!(
+            engine.camera.viewport_center(),
+            Vector2::new(100.0, 100.0),
+            epsilon = 1e-9
+        );
+
+        // jumping back restores the level view
+        assert!(engine.bookmark_jump_back().is_some());
+        assert_relative_eq!(engine.camera.rotation(), 0.0);
+
+        // with rotation turned off, jumps keep the view level
+        engine.camera.set_rotation_enabled(false);
+        assert!(engine.bookmark_jump_back().is_some());
+        assert_relative_eq!(engine.camera.rotation(), 0.0);
     }
 
     #[test]

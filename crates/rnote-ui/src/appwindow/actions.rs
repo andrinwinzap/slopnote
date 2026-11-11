@@ -814,6 +814,13 @@ impl RnAppWindow {
                 action_rotation_reset.set_enabled(enabled);
                 action_rotate_ccw.set_enabled(enabled);
                 action_rotate_cw.set_enabled(enabled);
+                for wrapper in appwindow.get_all_tabs() {
+                    wrapper
+                        .canvas()
+                        .engine_mut()
+                        .camera
+                        .set_rotation_enabled(enabled);
+                }
 
                 if enabled {
                     return;

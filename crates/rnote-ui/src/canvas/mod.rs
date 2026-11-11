@@ -1500,6 +1500,9 @@ impl RnCanvas {
         self.engine_mut()
             .camera
             .set_free_panning(appwindow.free_panning());
+        self.engine_mut()
+            .camera
+            .set_rotation_enabled(appwindow.canvas_rotation());
 
         // one per-appwindow property for touch-drawing
         let appwindow_touch_drawing = appwindow
