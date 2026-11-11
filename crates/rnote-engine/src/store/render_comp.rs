@@ -248,18 +248,22 @@ impl StrokeStore {
         image_scale: f64,
     ) {
         let keys = self.render_components.keys().collect::<Vec<StrokeKey>>();
+        let viewport_extended =
+            viewport.extend_by(viewport.extents() * VIEWPORT_EXTENTS_MARGIN_FACTOR);
 
         for key in keys {
+            // Erased strokes stay in the store until the document is saved. They are never drawn,
+            // so they are not rendered either and don't keep images.
+            let trashed = self
+                .trash_components
+                .get(key)
+                .is_some_and(|trash_comp| trash_comp.trashed);
+
             if let Some(stroke) = self.stroke_components.get(key)
                 && let Some(render_comp) = self.render_components.get_mut(key)
             {
-                let tasks_tx = tasks_tx.clone();
-                let stroke_bounds = stroke.bounds();
-                let viewport_extended =
-                    viewport.extend_by(viewport.extents() * VIEWPORT_EXTENTS_MARGIN_FACTOR);
-
-                // skip and clear image buffer if stroke is not in viewport
-                if !viewport_extended.intersects(&stroke_bounds) {
+                // skip and clear image buffer if stroke is trashed or not in viewport
+                if trashed || !viewport_extended.intersects(&stroke.bounds()) {
                     #[cfg(feature = "ui")]
                     {
                         render_comp.rendernodes = vec![];
@@ -298,6 +302,7 @@ impl StrokeStore {
                 // indicates that a task has now started to render the stroke
                 render_comp.state = RenderCompState::BusyRenderingInTask;
                 let stroke = stroke.clone();
+                let tasks_tx = tasks_tx.clone();
 
                 // Spawn a new thread for image rendering
                 rayon::spawn(

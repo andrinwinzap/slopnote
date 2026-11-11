@@ -133,7 +133,11 @@ impl StrokeStore {
         self.chrono_components = Arc::clone(&snapshot.chrono_components);
         self.chrono_counter = snapshot.chrono_counter;
 
-        self.update_geometry_for_strokes(&self.keys_unordered());
+        // The tree and the render components are built for all strokes below, so only the
+        // geometry is updated here: adding to the tree stroke by stroke is slow on large documents.
+        for stroke in Arc::make_mut(&mut self.stroke_components).values_mut() {
+            crate::strokes::Content::update_geometry(Arc::make_mut(stroke));
+        }
         self.rebuild_selection_components_slotmap();
         self.rebuild_trash_components_slotmap();
         self.rebuild_render_components_slotmap();
@@ -173,6 +177,7 @@ impl StrokeStore {
 
     /// Import the given history entry and replaces the current state with it.
     fn import_history_entry(&mut self, history_entry: HistoryEntry) {
+        let old_stroke_components = Arc::clone(&self.stroke_components);
         self.stroke_components = Arc::clone(&history_entry.stroke_components);
         self.trash_components = Arc::clone(&history_entry.trash_components);
         self.chrono_components = Arc::clone(&history_entry.chrono_components);
@@ -185,8 +190,23 @@ impl StrokeStore {
         // This ensures that we are able to continue displaying the strokes after undo/redo while they are rerendered.
         self.rebuild_retain_valid_keys_render_components();
 
-        let all_strokes = self.stroke_keys_unordered();
-        self.set_rendering_dirty_for_strokes(&all_strokes);
+        // The images of a stroke only depend on the stroke itself, and strokes that did not change
+        // between the two states are shared by them. So only the ones that differ are rendered
+        // again, instead of everything in view on every step.
+        let changed_strokes = self
+            .stroke_keys_unordered()
+            .into_iter()
+            .filter(|&key| {
+                match (
+                    old_stroke_components.get(key),
+                    self.stroke_components.get(key),
+                ) {
+                    (Some(old), Some(new)) => !Arc::ptr_eq(old, new),
+                    _ => true,
+                }
+            })
+            .collect::<Vec<StrokeKey>>();
+        self.set_rendering_dirty_for_strokes(&changed_strokes);
     }
 
     /// Record the current state and save it in the history.

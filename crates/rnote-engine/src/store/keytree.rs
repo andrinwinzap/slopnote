@@ -3,6 +3,7 @@ use super::StrokeKey;
 use p2d::bounding_volume::Aabb;
 use p2d::math::Vector2;
 use rstar::primitives::GeomWithData;
+use slotmap::SecondaryMap;
 
 /// The rtree object that holds the bounds and [StrokeKey].
 type KeyTreeObject = GeomWithData<rstar::primitives::Rectangle<[f64; 2]>, StrokeKey>;
@@ -11,19 +12,35 @@ type KeyTreeObject = GeomWithData<rstar::primitives::Rectangle<[f64; 2]>, Stroke
 /// A Rtree with [StrokeKey]'s as associated data.
 ///
 /// Used for faster spatial queries.
-pub(super) struct KeyTree(rstar::RTree<KeyTreeObject, rstar::DefaultParams>);
+pub(super) struct KeyTree {
+    tree: rstar::RTree<KeyTreeObject, rstar::DefaultParams>,
+    /// The bounds each key is in the tree with, to find its object without searching the whole tree.
+    bounds: SecondaryMap<StrokeKey, Aabb>,
+}
 
 impl KeyTree {
     /// Insert a new tree object with the given [StrokeKey] and bounds.
     pub(crate) fn insert_with_key(&mut self, key: StrokeKey, bounds: Aabb) {
-        self.0.insert(new_keytree_object(key, bounds));
+        self.tree.insert(new_keytree_object(key, bounds));
+        self.bounds.insert(key, bounds);
     }
 
     /// Removes the [KeyTreeObject] for the given key.
     pub(crate) fn remove_with_key(&mut self, key: StrokeKey) -> Option<KeyTreeObject> {
-        let object_to_remove = self.0.iter().find(|&object| object.data == key)?.to_owned();
+        // Moving many strokes removes and inserts each of them, so this must not walk the tree.
+        if let Some(bounds) = self.bounds.remove(key)
+            && let Some(removed) = self.tree.remove(&new_keytree_object(key, bounds))
+        {
+            return Some(removed);
+        }
+        // Bounds that are not numbers do not compare equal to themselves.
+        let object_to_remove = self
+            .tree
+            .iter()
+            .find(|&object| object.data == key)?
+            .to_owned();
 
-        self.0.remove(&object_to_remove)
+        self.tree.remove(&object_to_remove)
     }
 
     /// Update the Tree with new bounds for the given key.
@@ -36,7 +53,7 @@ impl KeyTree {
 
     /// Return the keys that intersect with the given bounds.
     pub(crate) fn keys_intersecting_bounds(&self, bounds: Aabb) -> Vec<StrokeKey> {
-        self.0
+        self.tree
             .locate_in_envelope_intersecting(rstar::AABB::from_corners(
                 [bounds.mins[0], bounds.mins[1]],
                 [bounds.maxs[0], bounds.maxs[1]],
@@ -47,7 +64,7 @@ impl KeyTree {
 
     /// Return the keys that are completely contained in the given bounds.
     pub(crate) fn keys_in_bounds(&self, bounds: Aabb) -> Vec<StrokeKey> {
-        self.0
+        self.tree
             .locate_in_envelope(rstar::AABB::from_corners(
                 [bounds.mins[0], bounds.mins[1]],
                 [bounds.maxs[0], bounds.maxs[1]],
@@ -58,7 +75,7 @@ impl KeyTree {
 
     /// Get containing bounds for the supplied keys.
     pub(crate) fn iter(&self) -> impl Iterator<Item = (StrokeKey, Aabb)> {
-        self.0.iter().map(|geom| {
+        self.tree.iter().map(|geom| {
             let bounds = geom.geom();
             let lower = bounds.lower();
             let upper = bounds.upper();
@@ -74,12 +91,16 @@ impl KeyTree {
 
     /// Rebuild the entire rtree from the given Vec of (key, bounds).
     pub(crate) fn rebuild_from_vec(&mut self, strokes: Vec<(StrokeKey, Aabb)>) {
+        self.bounds.clear();
         let objects = strokes
             .into_iter()
-            .map(|(key, bounds)| new_keytree_object(key, bounds))
+            .map(|(key, bounds)| {
+                self.bounds.insert(key, bounds);
+                new_keytree_object(key, bounds)
+            })
             .collect();
 
-        self.0 = rstar::RTree::bulk_load(objects);
+        self.tree = rstar::RTree::bulk_load(objects);
     }
 
     ///  Clear the entire tree.

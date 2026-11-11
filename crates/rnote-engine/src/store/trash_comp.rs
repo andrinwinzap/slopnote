@@ -308,6 +308,14 @@ impl StrokeStore {
             .into_iter()
             .filter(|key| !axis_keys.contains(key))
             .flat_map(|key| {
+                // Check first, to not copy strokes the eraser is nowhere near
+                if !self
+                    .stroke_components
+                    .get(key)
+                    .is_some_and(|stroke| eraser_bounds.intersects(&stroke.bounds()))
+                {
+                    return vec![];
+                }
                 let Some(stroke) = Arc::make_mut(&mut self.stroke_components)
                     .get_mut(key)
                     .map(Arc::make_mut)
