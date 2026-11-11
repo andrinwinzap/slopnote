@@ -25,15 +25,21 @@ impl Engine {
             let mut rendernodes: Vec<gsk::RenderNode> = vec![];
 
             if let Some(image) = &self.background_tile_image {
-                // Only create the texture once, it is expensive
-                let new_texture = match image.to_memtexture() {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error!(
-                            "Failed to generate memory-texture of background tile image, Err: {e:?}"
-                        );
-                        return widget_flags;
-                    }
+                // Only create the texture once per tile image, it is expensive
+                let new_texture = match &self.background_tile_texture {
+                    Some(texture) => texture.clone(),
+                    None => match image.to_memtexture() {
+                        Ok(texture) => {
+                            self.background_tile_texture = Some(texture.clone());
+                            texture
+                        }
+                        Err(e) => {
+                            error!(
+                                "Failed to generate memory-texture of background tile image, Err: {e:?}"
+                            );
+                            return widget_flags;
+                        }
+                    },
                 };
 
                 for split_bounds in viewport.split_extended_origin_aligned(
@@ -154,6 +160,7 @@ impl Engine {
         self.bookmark_indicator_image.take();
         #[cfg(feature = "ui")]
         {
+            self.background_tile_texture.take();
             self.background_rendernodes.clear();
             self.origin_indicator_rendernode.take();
             self.bookmark_indicator_rendernodes.clear();
@@ -171,6 +178,10 @@ impl Engine {
         match self.document.config.background.gen_tile_image(image_scale) {
             Ok(image) => {
                 self.background_tile_image = Some(image);
+                #[cfg(feature = "ui")]
+                {
+                    self.background_tile_texture = None;
+                }
             }
             Err(e) => {
                 error!("Regenerating background tile image failed, Err: {e:?}");

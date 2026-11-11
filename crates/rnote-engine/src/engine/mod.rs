@@ -209,6 +209,11 @@ pub struct Engine {
     // Background rendering
     #[serde(skip)]
     background_tile_image: Option<Image>,
+    /// The texture of the tile image, kept so that panning does not make and upload a new one
+    /// on every step.
+    #[cfg(feature = "ui")]
+    #[serde(skip)]
+    background_tile_texture: Option<gtk4::gdk::MemoryTexture>,
     #[cfg(feature = "ui")]
     #[serde(skip)]
     background_rendernodes: Vec<gtk4::gsk::RenderNode>,
@@ -254,6 +259,8 @@ impl Default for Engine {
             tasks_tx: EngineTaskSender(tasks_tx),
             tasks_rx: Some(EngineTaskReceiver(tasks_rx)),
             background_tile_image: None,
+            #[cfg(feature = "ui")]
+            background_tile_texture: None,
             #[cfg(feature = "ui")]
             background_rendernodes: Vec::default(),
             origin_indicator_image: None,
