@@ -85,6 +85,23 @@ fn main() -> glib::ExitCode {
         eprintln!("failed to setup gresources, Err: {e:?}");
     }
 
+    // Without a handler, a panic in a task spawned on the thread pool (importing a damaged file,
+    // rendering a stroke) aborts the whole application with every open document. With it only that
+    // task is lost: its result channel closes, which the code waiting for it reports as an error.
+    if let Err(e) = rayon::ThreadPoolBuilder::new()
+        .panic_handler(|panic| {
+            let message = panic
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown".to_string());
+            tracing::error!("A background task panicked: {message}");
+        })
+        .build_global()
+    {
+        eprintln!("failed to setup the thread pool, Err: {e:?}");
+    }
+
     let app = RnApp::new();
     app.run()
 }

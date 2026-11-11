@@ -377,9 +377,10 @@ impl Engine {
 
         // calculate ratio
         let ratio = match resize {
-            ImageSizeOption::ResizeImage(resize) => {
-                calculate_resize_ratio(resize, content.size().unwrap(), pos)
-            }
+            // Content without strokes has no size, and nothing to resize
+            ImageSizeOption::ResizeImage(resize) => content
+                .size()
+                .map_or(1.0, |size| calculate_resize_ratio(resize, size, pos)),
             _ => 1.0f64,
         };
         let inserted_keys = self.store.insert_stroke_content(content, ratio, pos);
