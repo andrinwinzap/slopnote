@@ -278,8 +278,11 @@ impl PenBehaviour for Brush {
                 },
                 PenEvent::Down { element, .. },
             ) => {
-                // Drag delta in doc coords -> in scroller pixels (= doc * zoom).
-                let delta_scroller = (element.pos - *start_pos) * total_zoom;
+                // Drag delta in doc coords -> in scroller pixels, where the ruler lives: turned with
+                // the canvas and scaled by the zoom.
+                let delta_scroller = Vector2::from_angle(engine_view.camera.rotation())
+                    .rotate(element.pos - *start_pos)
+                    * total_zoom;
                 let ruler = &mut engine_view.config.pens_config.brush_config.ruler_config;
                 ruler.anchor = *anchor_begin + delta_scroller;
                 ruler.dial_pos = *dial_pos_begin + delta_scroller;
@@ -300,8 +303,12 @@ impl PenBehaviour for Brush {
                 },
                 PenEvent::Down { element, .. },
             ) => {
-                // Only the vertical part of the drag turns the ruler, in surface pixels.
-                let drag_y = (element.pos.y - last_pos.y) * total_zoom;
+                // Only the vertical part of the drag turns the ruler, in surface pixels: vertical
+                // on the screen, which is not the document's vertical on a turned canvas.
+                let drag_y = Vector2::from_angle(engine_view.camera.rotation())
+                    .rotate(element.pos - *last_pos)
+                    .y
+                    * total_zoom;
                 *last_pos = element.pos;
 
                 let ruler = &mut engine_view.config.pens_config.brush_config.ruler_config;
@@ -342,15 +349,13 @@ impl PenBehaviour for Brush {
                 }
             }
             (BrushState::DraggingRuler { .. }, _) => EventResult {
-                handled: false,
-                propagate: EventPropagation::Proceed,
+                handled: true,
+                propagate: EventPropagation::Stop,
                 progress: PenProgress::InProgress,
             },
             (
                 BrushState::Drawing {
-                    current_stroke_key,
-                    begin,
-                    ..
+                    current_stroke_key, ..
                 },
                 PenEvent::Cancel,
             ) => {
@@ -368,20 +373,14 @@ impl PenBehaviour for Brush {
                 engine_view
                     .store
                     .update_geometry_for_stroke(*current_stroke_key);
-                let (erased, wf) = erase_with_scribble(
+                // A stroke that is cut off, by switching the pen for example, is not judged as a
+                // scratch-out: it would erase with half a gesture.
+                engine_view.store.regenerate_rendering_for_stroke_threaded(
+                    engine_view.tasks_tx.clone(),
                     *current_stroke_key,
-                    now.saturating_duration_since(*begin),
-                    engine_view,
+                    engine_view.camera.viewport(),
+                    engine_view.camera.image_scale(),
                 );
-                widget_flags |= wf;
-                if !erased {
-                    engine_view.store.regenerate_rendering_for_stroke_threaded(
-                        engine_view.tasks_tx.clone(),
-                        *current_stroke_key,
-                        engine_view.camera.viewport(),
-                        engine_view.camera.image_scale(),
-                    );
-                }
                 widget_flags |= engine_view
                     .document
                     .resize_autoexpand(engine_view.store, engine_view.camera);
@@ -537,6 +536,7 @@ impl PenBehaviour for Brush {
                         let (erased, wf) = erase_with_scribble(
                             *current_stroke_key,
                             now.saturating_duration_since(*begin),
+                            ruler_snap_side.is_some(),
                             engine_view,
                         );
                         widget_flags |= wf;
@@ -597,7 +597,18 @@ impl PenBehaviour for Brush {
                 if *adjusted {
                     let shape = adjust.adjusted(element.pos);
                     widget_flags |= update_shape_stroke(*stroke_key, shape, engine_view);
-                    widget_flags |= engine_view.store.record(Instant::now());
+                    // Rendered right away: of the renderings started while adjusting, an older
+                    // one could arrive last and stay.
+                    engine_view.store.regenerate_rendering_for_stroke(
+                        *stroke_key,
+                        engine_view.camera.viewport(),
+                        engine_view.camera.image_scale(),
+                    );
+                    // The shape was recorded when it was recognized. Adjusting it belongs to the
+                    // same step, so that one undo takes the shape away.
+                    widget_flags |= engine_view
+                        .store
+                        .update_latest_history_entry(Instant::now());
                 }
                 self.state = BrushState::Idle;
 
@@ -607,7 +618,12 @@ impl PenBehaviour for Brush {
                     progress: PenProgress::Finished,
                 }
             }
-            (BrushState::AdjustingShape { .. }, PenEvent::Cancel) => {
+            (BrushState::AdjustingShape { adjusted, .. }, PenEvent::Cancel) => {
+                if *adjusted {
+                    widget_flags |= engine_view
+                        .store
+                        .update_latest_history_entry(Instant::now());
+                }
                 self.state = BrushState::Idle;
 
                 EventResult {
@@ -907,15 +923,17 @@ fn reset_hold_task(
 fn erase_with_scribble(
     stroke_key: StrokeKey,
     duration: Duration,
+    along_ruler: bool,
     engine_view: &mut EngineViewMut,
 ) -> (bool, WidgetFlags) {
     let mut widget_flags = WidgetFlags::default();
 
-    if !engine_view
-        .config
-        .pens_config
-        .brush_config
-        .scribble_erase_enabled
+    let brush_config = &engine_view.config.pens_config.brush_config;
+    // Going back and forth is also how a line along the ruler is darkened and how a word is
+    // highlighted with the marker, and neither is meant to erase.
+    if !brush_config.scribble_erase_enabled
+        || along_ruler
+        || brush_config.style == BrushStyle::Marker
     {
         return (false, widget_flags);
     }
