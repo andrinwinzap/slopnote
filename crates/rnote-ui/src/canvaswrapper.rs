@@ -496,6 +496,61 @@ mod imp {
             self.parent_constructed();
             let obj = self.obj();
 
+            // A palm resting on the edge of the screen makes a small contact that the touchscreen
+            // can report as a finger. While the pen is in use, such a touch must not start panning
+            // or zooming: the canvas would move under the pen and the stroke with it. Touches that
+            // start on the ruler are left alone, so it can still be held and turned while writing.
+            // Ahead of everything on the scroller: a sequence whose begin a gesture never sees is
+            // ignored by it from then on.
+            let palm_guard = gtk4::EventControllerLegacy::builder()
+                .name("palm_guard")
+                .propagation_phase(PropagationPhase::Capture)
+                .build();
+            palm_guard.connect_event(clone!(
+                #[weak(rename_to=canvaswrapper)]
+                obj,
+                #[upgrade_or]
+                glib::Propagation::Proceed,
+                move |_, event| {
+                    if event.event_type() != gdk::EventType::TouchBegin
+                        || !canvaswrapper.canvas().pen_recently_active()
+                    {
+                        return glib::Propagation::Proceed;
+                    }
+                    let scroller = canvaswrapper.imp().scroller.get();
+                    let on_ruler = event
+                        .position()
+                        .zip(scroller.native())
+                        .and_then(|((x, y), native)| {
+                            let (surface_x, surface_y) = native.surface_transform();
+                            native.compute_point(
+                                &scroller,
+                                &graphene::Point::new(
+                                    (x - surface_x) as f32,
+                                    (y - surface_y) as f32,
+                                ),
+                            )
+                        })
+                        .is_some_and(|pos| {
+                            canvaswrapper
+                                .canvas()
+                                .engine_ref()
+                                .engine_config()
+                                .read()
+                                .pens_config
+                                .brush_config
+                                .ruler_config
+                                .hit_body_window(Vector2::new(pos.x() as f64, pos.y() as f64))
+                        });
+                    if on_ruler {
+                        return glib::Propagation::Proceed;
+                    }
+                    debug!("Ignoring a touch while the pen is in use");
+                    glib::Propagation::Stop
+                }
+            ));
+            obj.add_controller(palm_guard);
+
             // Add input controllers
             self.scroller
                 .add_controller(self.pointer_motion_controller.clone());
@@ -878,9 +933,15 @@ mod imp {
                     drag_mode,
                     #[weak(rename_to=canvaswrapper)]
                     obj,
-                    move |_, x, y| {
+                    move |gesture, x, y| {
                         let canvas = canvaswrapper.canvas();
                         match drag_mode.get() {
+                            // A touch that was already there when the pen came is the palm, not a
+                            // pan: it stops, so the canvas doesn't move under the pen.
+                            Some(CanvasDragMode::Canvas(_)) if canvas.pen_recently_active() => {
+                                drag_mode.set(None);
+                                gesture.set_state(EventSequenceState::Denied);
+                            }
                             Some(CanvasDragMode::Ruler(anchor_begin, dial_pos_begin)) => {
                                 // Drag offset (x, y) is in scroller pixels — apply directly.
                                 let delta = Vector2::new(x, y);

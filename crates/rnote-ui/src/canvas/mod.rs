@@ -862,6 +862,11 @@ impl RnCanvas {
     }
 
     #[allow(unused)]
+    /// Whether the pen is in use: it sent something, while hovering or drawing, a moment ago.
+    pub(crate) fn pen_recently_active(&self) -> bool {
+        !input::pen_went_quiet(self, std::time::Instant::now())
+    }
+
     /// How many times the document was reported as changed.
     pub(crate) fn modifications(&self) -> u64 {
         self.imp().modifications.get()

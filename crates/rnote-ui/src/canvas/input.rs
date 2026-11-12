@@ -387,7 +387,7 @@ fn event_is_stylus(event: &gdk::Event) -> bool {
 const TOUCH_AFTER_PEN_DELAY: Duration = Duration::from_millis(500);
 
 /// Whether the pen has not sent anything for long enough that it has likely left.
-fn pen_went_quiet(canvas: &RnCanvas, now: Instant) -> bool {
+pub(super) fn pen_went_quiet(canvas: &RnCanvas, now: Instant) -> bool {
     canvas
         .imp()
         .last_pen_event
