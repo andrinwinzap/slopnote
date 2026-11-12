@@ -4,7 +4,7 @@
 //! [`KEEP`] of pointer events and frame timings are kept in memory, and are only written
 //! to a file when asked to, right after something went wrong.
 
-use gtk4::gdk;
+use gtk4::{gdk, prelude::*};
 use rnote_compose::penevent::PenState;
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -26,12 +26,17 @@ enum Entry {
         pen_state: (PenState, PenState),
         stylus_active: (bool, bool),
         handling: Duration,
+        /// How long ago the compositor stamped the event when the app got it, in ms.
+        age: i64,
     },
     Frame {
         at: Instant,
         drawing: Duration,
         /// Where the view was: offset, zoom and rotation of the camera.
         view: (f64, f64, f64, f64),
+        /// For the latest frame the compositor reported as shown: ms from GTK starting it until
+        /// it was on screen, and that frame's number counted back from this one.
+        shown: Option<(f64, i64)>,
     },
 }
 
@@ -67,17 +72,29 @@ fn push(entry: Entry) {
 }
 
 /// Times drawing a frame of the canvas, from creation until dropped.
-pub(super) struct Frame(Instant, (f64, f64, f64, f64));
+pub(super) struct Frame(Instant, (f64, f64, f64, f64), Option<(f64, i64)>);
 
 impl Frame {
     /// `camera` is where the view is in this frame, to see whether it moved while writing.
-    pub(super) fn begin(camera: &rnote_engine::Camera) -> Self {
+    pub(super) fn begin(camera: &rnote_engine::Camera, widget: &impl IsA<gtk4::Widget>) -> Self {
         let offset = camera.offset();
         Self(
             Instant::now(),
             (offset.x, offset.y, camera.total_zoom(), camera.rotation()),
+            widget.frame_clock().and_then(|clock| last_shown(&clock)),
         )
     }
+}
+
+/// The latest frame the compositor said it put on screen, a few frames back at most.
+fn last_shown(clock: &gdk::FrameClock) -> Option<(f64, i64)> {
+    let current = clock.frame_counter();
+    (1..=8).find_map(|back| {
+        let timings = clock.timings(current - back)?;
+        let shown = timings.presentation_time();
+        (timings.is_complete() && shown != 0)
+            .then(|| ((shown - timings.frame_time()) as f64 / 1e3, back))
+    })
 }
 
 impl Drop for Frame {
@@ -86,6 +103,7 @@ impl Drop for Frame {
             at: self.0,
             drawing: self.0.elapsed(),
             view: self.1,
+            shown: self.2,
         });
     }
 }
@@ -110,6 +128,9 @@ pub(super) fn pointer_event(
         pen_state,
         stylus_active,
         handling: begin.elapsed(),
+        // Wayland stamps events in ms of the monotonic clock, cut to 32 bits.
+        age: ((gtk4::glib::monotonic_time() / 1000) as u32).wrapping_sub(event.time()) as i32
+            as i64,
     });
 }
 
@@ -135,9 +156,10 @@ pub(crate) fn save(header: &str) -> anyhow::Result<PathBuf> {
                     pen_state,
                     stylus_active,
                     handling,
+                    age,
                 } => writeln!(
                     text,
-                    "{:9.1} {kind:?} tool={tool:?} pos={pos:?} pressure={pressure:?} mods={modifiers:?} pen {:?}->{:?} stylus {}->{} handled_in={:.2}ms",
+                    "{:9.1} {kind:?} tool={tool:?} pos={pos:?} pressure={pressure:?} mods={modifiers:?} pen {:?}->{:?} stylus {}->{} handled_in={:.2}ms age={age}ms",
                     ms(*at),
                     pen_state.0,
                     pen_state.1,
@@ -145,19 +167,27 @@ pub(crate) fn save(header: &str) -> anyhow::Result<PathBuf> {
                     stylus_active.1,
                     handling.as_secs_f64() * 1e3,
                 ),
-                Entry::Frame { at, drawing, view } => {
+                Entry::Frame {
+                    at,
+                    drawing,
+                    view,
+                    shown,
+                } => {
                     let since_last = last_frame
                         .map_or(0.0, |last| at.duration_since(last).as_secs_f64() * 1e3);
                     last_frame = Some(*at);
                     writeln!(
                         text,
-                        "{:9.1} frame since_last={since_last:.1}ms drawn_in={:.2}ms view_offset=({:.1},{:.1}) zoom={:.3} rotation={:.3}",
+                        "{:9.1} frame since_last={since_last:.1}ms drawn_in={:.2}ms view_offset=({:.1},{:.1}) zoom={:.3} rotation={:.3} shown={}",
                         ms(*at),
                         drawing.as_secs_f64() * 1e3,
                         view.0,
                         view.1,
                         view.2,
                         view.3,
+                        shown.map_or("unknown".to_string(), |(ms, back)| format!(
+                            "{ms:.1}ms(frame -{back})"
+                        )),
                     )
                 }
             };
