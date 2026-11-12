@@ -497,9 +497,10 @@ mod imp {
             let obj = self.obj();
 
             // A palm resting on the edge of the screen makes a small contact that the touchscreen
-            // can report as a finger. While the pen is in use, such a touch must not start panning
-            // or zooming: the canvas would move under the pen and the stroke with it. Touches that
-            // start on the ruler are left alone, so it can still be held and turned while writing.
+            // can report as a finger. While the pen is on the screen, such a touch must not start
+            // panning or zooming: the canvas would move under the pen and the stroke with it.
+            // Touches that start on the ruler are left alone, so it can still be held and turned
+            // while writing.
             // Ahead of everything on the scroller: a sequence whose begin a gesture never sees is
             // ignored by it from then on.
             let palm_guard = gtk4::EventControllerLegacy::builder()
@@ -513,7 +514,7 @@ mod imp {
                 glib::Propagation::Proceed,
                 move |_, event| {
                     if event.event_type() != gdk::EventType::TouchBegin
-                        || !canvaswrapper.canvas().pen_recently_active()
+                        || !canvaswrapper.canvas().pen_down()
                     {
                         return glib::Propagation::Proceed;
                     }
@@ -545,7 +546,7 @@ mod imp {
                     if on_ruler {
                         return glib::Propagation::Proceed;
                     }
-                    debug!("Ignoring a touch while the pen is in use");
+                    debug!("Ignoring a touch while the pen is down");
                     glib::Propagation::Stop
                 }
             ));
@@ -936,9 +937,9 @@ mod imp {
                     move |gesture, x, y| {
                         let canvas = canvaswrapper.canvas();
                         match drag_mode.get() {
-                            // A touch that was already there when the pen came is the palm, not a
-                            // pan: it stops, so the canvas doesn't move under the pen.
-                            Some(CanvasDragMode::Canvas(_)) if canvas.pen_recently_active() => {
+                            // A touch that was already there when the pen touched down is the palm,
+                            // not a pan: it stops, so the canvas doesn't move under the pen.
+                            Some(CanvasDragMode::Canvas(_)) if canvas.pen_down() => {
                                 drag_mode.set(None);
                                 gesture.set_state(EventSequenceState::Denied);
                             }

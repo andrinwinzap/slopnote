@@ -91,6 +91,8 @@ mod imp {
         pub(crate) last_pen_position: Cell<Option<(f64, f64)>>,
         /// When the pen last sent an event, to tell a finger from the palm resting while writing.
         pub(crate) last_pen_event: Cell<Option<std::time::Instant>>,
+        /// Whether the tip of the pen is on the screen.
+        pub(crate) pen_down: Cell<bool>,
         /// Where the mouse last was, to tell it moving from GTK repeating where it is.
         pub(crate) last_mouse_position: Cell<Option<(f64, f64)>>,
         /// Shows the cursor again a moment after the pen has gone, unless it is back by then.
@@ -202,6 +204,7 @@ mod imp {
                 pen_in_use: Cell::new(false),
                 last_pen_position: Cell::new(None),
                 last_pen_event: Cell::new(None),
+                pen_down: Cell::new(false),
                 last_mouse_position: Cell::new(None),
                 pen_gone_timeout: RefCell::new(None),
 
@@ -601,6 +604,10 @@ mod imp {
                     );
                     pen_state.set(new_state);
                     stylus_active.set(new_stylus_active);
+                    canvas
+                        .imp()
+                        .pen_down
+                        .set(new_stylus_active && new_state == PenState::Down);
                     propagation
                 }
             ));
@@ -862,9 +869,9 @@ impl RnCanvas {
     }
 
     #[allow(unused)]
-    /// Whether the pen is in use: it sent something, while hovering or drawing, a moment ago.
-    pub(crate) fn pen_recently_active(&self) -> bool {
-        !input::pen_went_quiet(self, std::time::Instant::now())
+    /// Whether the tip of the pen is on the screen.
+    pub(crate) fn pen_down(&self) -> bool {
+        self.imp().pen_down.get()
     }
 
     /// How many times the document was reported as changed.
