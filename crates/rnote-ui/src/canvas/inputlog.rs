@@ -28,6 +28,9 @@ enum Entry {
         handling: Duration,
         /// How long ago the compositor stamped the event when the app got it, in ms.
         age: i64,
+        /// What was handed to the pen for this event: position in the document, pressure and
+        /// how many ms before `at` each element was timed.
+        elements: Vec<(f64, f64, f64, f64)>,
     },
     Frame {
         at: Instant,
@@ -57,6 +60,22 @@ struct State {
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
+    /// The elements of the event being handled, until the event itself is recorded.
+    static ELEMENTS: RefCell<Vec<(f64, f64, f64, f64)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Notes the elements handed to the pen for the event being handled, timed relative to `now`.
+pub(super) fn elements(elements: &[(rnote_compose::penpath::Element, Instant)], now: Instant) {
+    ELEMENTS.with_borrow_mut(|noted| {
+        noted.extend(elements.iter().map(|(element, time)| {
+            (
+                element.pos.x,
+                element.pos.y,
+                element.pressure,
+                now.saturating_duration_since(*time).as_secs_f64() * 1e3,
+            )
+        }));
+    });
 }
 
 fn push(entry: Entry) {
@@ -145,6 +164,7 @@ pub(super) fn pointer_event(
         // Wayland stamps events in ms of the monotonic clock, cut to 32 bits.
         age: ((gtk4::glib::monotonic_time() / 1000) as u32).wrapping_sub(event.time()) as i32
             as i64,
+        elements: ELEMENTS.take(),
     });
 }
 
@@ -171,15 +191,23 @@ pub(crate) fn save(header: &str) -> anyhow::Result<PathBuf> {
                     stylus_active,
                     handling,
                     age,
+                    elements,
                 } => writeln!(
                     text,
-                    "{:9.1} {kind:?} tool={tool:?} pos={pos:?} pressure={pressure:?} mods={modifiers:?} pen {:?}->{:?} stylus {}->{} handled_in={:.2}ms age={age}ms",
+                    "{:9.1} {kind:?} tool={tool:?} pos={pos:?} pressure={pressure:?} mods={modifiers:?} pen {:?}->{:?} stylus {}->{} handled_in={:.2}ms age={age}ms elements=[{}]",
                     ms(*at),
                     pen_state.0,
                     pen_state.1,
                     stylus_active.0,
                     stylus_active.1,
                     handling.as_secs_f64() * 1e3,
+                    elements
+                        .iter()
+                        .map(|(x, y, pressure, before)| format!(
+                            "{x:.2},{y:.2},{pressure:.3},-{before:.1}ms"
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(" "),
                 ),
                 Entry::Frame {
                     at,

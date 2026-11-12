@@ -216,6 +216,7 @@ pub(crate) fn handle_pointer_controller_event(
         let Some(elements) = retrieve_pointer_elements(canvas, now, event, backlog_policy) else {
             return (glib::Propagation::Proceed, pen_state, stylus_active);
         };
+        super::inputlog::elements(&elements, now);
         let modifier_keys = retrieve_modifier_keys(event.modifier_state());
         let pen_mode = retrieve_pen_mode(event);
 
