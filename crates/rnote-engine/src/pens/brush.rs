@@ -700,6 +700,16 @@ impl DrawableOnDoc for Brush {
 }
 
 impl Brush {
+    /// The stroke being drawn right now, if any.
+    pub(crate) fn drawing_stroke_key(&self) -> Option<StrokeKey> {
+        match &self.state {
+            BrushState::Drawing {
+                current_stroke_key, ..
+            } => Some(*current_stroke_key),
+            _ => None,
+        }
+    }
+
     const INPUT_OVERSHOOT: f64 = 30.0;
 
     /// Attempt to recognize the currently drawn stroke as a shape and replace it,

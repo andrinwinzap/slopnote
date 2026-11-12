@@ -519,12 +519,29 @@ mod imp {
         }
     }
 
+    impl RnCanvas {
+        /// How far, in pixels, the ink of the stroke being drawn ends from where the pen is.
+        fn ink_gap(&self) -> Option<f64> {
+            let obj = self.obj();
+            let ink_end = self.engine.borrow().drawn_ink_end()?;
+            let (x, y) = self.last_pen_position.get()?;
+            let native = obj.native()?;
+            let (surface_x, surface_y) = native.surface_transform();
+            let pen = native.compute_point(
+                &*obj,
+                &graphene::Point::new((x - surface_x) as f32, (y - surface_y) as f32),
+            )?;
+            Some(ink_end.distance(Vector2::new(pen.x() as f64, pen.y() as f64)))
+        }
+    }
+
     impl WidgetImpl for RnCanvas {
         // request_mode(), measure(), allocate() overrides happen in the CanvasLayout LayoutManager
 
         fn snapshot(&self, snapshot: &gtk4::Snapshot) {
             let obj = self.obj();
-            let _inputlog = super::inputlog::Frame::begin(&self.engine.borrow().camera, &*obj);
+            let _inputlog =
+                super::inputlog::Frame::begin(&self.engine.borrow().camera, &*obj, self.ink_gap());
 
             if let Err(e) = || -> anyhow::Result<()> {
                 let clip_bounds = if let Some(parent) = obj.parent() {

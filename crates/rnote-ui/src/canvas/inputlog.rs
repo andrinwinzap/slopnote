@@ -37,6 +37,8 @@ enum Entry {
         /// For the latest frame the compositor reported as shown: ms from GTK starting it until
         /// it was on screen, and that frame's number counted back from this one.
         shown: Option<(f64, i64)>,
+        /// Pixels from the end of the ink of the stroke being drawn to the pen.
+        ink_gap: Option<f64>,
     },
 }
 
@@ -72,16 +74,27 @@ fn push(entry: Entry) {
 }
 
 /// Times drawing a frame of the canvas, from creation until dropped.
-pub(super) struct Frame(Instant, (f64, f64, f64, f64), Option<(f64, i64)>);
+pub(super) struct Frame(
+    Instant,
+    (f64, f64, f64, f64),
+    Option<(f64, i64)>,
+    Option<f64>,
+);
 
 impl Frame {
     /// `camera` is where the view is in this frame, to see whether it moved while writing.
-    pub(super) fn begin(camera: &rnote_engine::Camera, widget: &impl IsA<gtk4::Widget>) -> Self {
+    /// `ink_gap` is how far the ink of the stroke being drawn ends from the pen.
+    pub(super) fn begin(
+        camera: &rnote_engine::Camera,
+        widget: &impl IsA<gtk4::Widget>,
+        ink_gap: Option<f64>,
+    ) -> Self {
         let offset = camera.offset();
         Self(
             Instant::now(),
             (offset.x, offset.y, camera.total_zoom(), camera.rotation()),
             widget.frame_clock().and_then(|clock| last_shown(&clock)),
+            ink_gap,
         )
     }
 }
@@ -104,6 +117,7 @@ impl Drop for Frame {
             drawing: self.0.elapsed(),
             view: self.1,
             shown: self.2,
+            ink_gap: self.3,
         });
     }
 }
@@ -172,13 +186,14 @@ pub(crate) fn save(header: &str) -> anyhow::Result<PathBuf> {
                     drawing,
                     view,
                     shown,
+                    ink_gap,
                 } => {
                     let since_last = last_frame
                         .map_or(0.0, |last| at.duration_since(last).as_secs_f64() * 1e3);
                     last_frame = Some(*at);
                     writeln!(
                         text,
-                        "{:9.1} frame since_last={since_last:.1}ms drawn_in={:.2}ms view_offset=({:.1},{:.1}) zoom={:.3} rotation={:.3} shown={}",
+                        "{:9.1} frame since_last={since_last:.1}ms drawn_in={:.2}ms view_offset=({:.1},{:.1}) zoom={:.3} rotation={:.3} shown={}{}",
                         ms(*at),
                         drawing.as_secs_f64() * 1e3,
                         view.0,
@@ -188,6 +203,7 @@ pub(crate) fn save(header: &str) -> anyhow::Result<PathBuf> {
                         shown.map_or("unknown".to_string(), |(ms, back)| format!(
                             "{ms:.1}ms(frame -{back})"
                         )),
+                        ink_gap.map_or(String::new(), |gap| format!(" ink_gap={gap:.1}px")),
                     )
                 }
             };

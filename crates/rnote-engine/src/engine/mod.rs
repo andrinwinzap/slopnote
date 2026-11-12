@@ -277,6 +277,26 @@ impl Default for Engine {
 }
 
 impl Engine {
+    /// Where the ink of the brush stroke being drawn ends, in surface coordinates.
+    ///
+    /// For finding where the ink lags behind the pen.
+    pub fn drawn_ink_end(&self) -> Option<Vector2> {
+        let Pen::Brush(brush) = self.penholder.current_pen() else {
+            return None;
+        };
+        let Some(crate::strokes::Stroke::BrushStroke(stroke)) =
+            self.store.get_stroke_ref(brush.drawing_stroke_key()?)
+        else {
+            return None;
+        };
+        let end = stroke
+            .path
+            .segments
+            .last()
+            .map_or(stroke.path.start, |segment| segment.end());
+        Some(self.camera.transform().transform_point2(end.pos))
+    }
+
     pub(crate) const STROKE_BOUNDS_INTERSECTION_TOLERANCE: f64 = 1e-3;
     /// Distance (in surface coordinates) below which an added bookmark replaces an existing one.
     pub(crate) const BOOKMARK_MERGE_DIST: f64 = 32.0;
