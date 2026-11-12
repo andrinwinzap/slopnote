@@ -30,6 +30,8 @@ enum Entry {
     Frame {
         at: Instant,
         drawing: Duration,
+        /// Where the view was: offset, zoom and rotation of the camera.
+        view: (f64, f64, f64, f64),
     },
 }
 
@@ -65,11 +67,16 @@ fn push(entry: Entry) {
 }
 
 /// Times drawing a frame of the canvas, from creation until dropped.
-pub(super) struct Frame(Instant);
+pub(super) struct Frame(Instant, (f64, f64, f64, f64));
 
 impl Frame {
-    pub(super) fn begin() -> Self {
-        Self(Instant::now())
+    /// `camera` is where the view is in this frame, to see whether it moved while writing.
+    pub(super) fn begin(camera: &rnote_engine::Camera) -> Self {
+        let offset = camera.offset();
+        Self(
+            Instant::now(),
+            (offset.x, offset.y, camera.total_zoom(), camera.rotation()),
+        )
     }
 }
 
@@ -78,6 +85,7 @@ impl Drop for Frame {
         push(Entry::Frame {
             at: self.0,
             drawing: self.0.elapsed(),
+            view: self.1,
         });
     }
 }
@@ -137,15 +145,19 @@ pub(crate) fn save(header: &str) -> anyhow::Result<PathBuf> {
                     stylus_active.1,
                     handling.as_secs_f64() * 1e3,
                 ),
-                Entry::Frame { at, drawing } => {
+                Entry::Frame { at, drawing, view } => {
                     let since_last = last_frame
                         .map_or(0.0, |last| at.duration_since(last).as_secs_f64() * 1e3);
                     last_frame = Some(*at);
                     writeln!(
                         text,
-                        "{:9.1} frame since_last={since_last:.1}ms drawn_in={:.2}ms",
+                        "{:9.1} frame since_last={since_last:.1}ms drawn_in={:.2}ms view_offset=({:.1},{:.1}) zoom={:.3} rotation={:.3}",
                         ms(*at),
                         drawing.as_secs_f64() * 1e3,
+                        view.0,
+                        view.1,
+                        view.2,
+                        view.3,
                     )
                 }
             };

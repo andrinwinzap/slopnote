@@ -524,7 +524,7 @@ mod imp {
 
         fn snapshot(&self, snapshot: &gtk4::Snapshot) {
             let obj = self.obj();
-            let _inputlog = super::inputlog::Frame::begin();
+            let _inputlog = super::inputlog::Frame::begin(&self.engine.borrow().camera);
 
             if let Err(e) = || -> anyhow::Result<()> {
                 let clip_bounds = if let Some(parent) = obj.parent() {
