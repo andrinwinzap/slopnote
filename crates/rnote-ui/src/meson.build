@@ -47,6 +47,7 @@ rnote_ui_sources = files(
     'canvas/canvaslayout.rs',
     'canvas/imexport.rs',
     'canvas/input.rs',
+    'canvas/inputlog.rs',
     'canvas/mod.rs',
     'bookmarkspanel.rs',
     'canvasmenu.rs',

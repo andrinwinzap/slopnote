@@ -2,6 +2,7 @@
 mod canvaslayout;
 pub(crate) mod imexport;
 mod input;
+pub(crate) mod inputlog;
 
 // Re-exports
 pub(crate) use canvaslayout::RnCanvasLayout;
@@ -520,6 +521,7 @@ mod imp {
 
         fn snapshot(&self, snapshot: &gtk4::Snapshot) {
             let obj = self.obj();
+            let _inputlog = super::inputlog::Frame::begin();
 
             if let Err(e) = || -> anyhow::Result<()> {
                 let clip_bounds = if let Some(parent) = obj.parent() {
@@ -583,6 +585,7 @@ mod imp {
                 #[upgrade_or]
                 glib::Propagation::Proceed,
                 move |_, event| {
+                    let begin = std::time::Instant::now();
                     let (propagation, new_state, new_stylus_active) =
                         super::input::handle_pointer_controller_event(
                             &canvas,
@@ -590,6 +593,12 @@ mod imp {
                             pen_state.get(),
                             stylus_active.get(),
                         );
+                    super::inputlog::pointer_event(
+                        begin,
+                        event,
+                        (pen_state.get(), new_state),
+                        (stylus_active.get(), new_stylus_active),
+                    );
                     pen_state.set(new_state);
                     stylus_active.set(new_stylus_active);
                     propagation

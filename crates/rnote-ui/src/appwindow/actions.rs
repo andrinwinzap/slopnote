@@ -197,6 +197,44 @@ impl RnAppWindow {
         self.add_action(&action_righthanded);
         let action_touch_drawing = gio::PropertyAction::new("touch-drawing", self, "touch-drawing");
         self.add_action(&action_touch_drawing);
+        // Saves the last moments of pen input, for finding input problems that only happen now
+        // and then.
+        let action_save_input_log = gio::SimpleAction::new("save-input-log", None);
+        self.add_action(&action_save_input_log);
+        action_save_input_log.connect_activate(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |_, _| {
+                let config = appwindow.engine_config().read().pens_config.brush_config.clone();
+                let header = format!(
+                    "Slopnote input log\ntouch drawing: {}\nscratch to erase: {}\nshape recognition: {}\nhide pen cursor: {}\nbrush style: {:?}, builder: {:?}\n\n",
+                    appwindow.touch_drawing(),
+                    config.scribble_erase_enabled,
+                    config.shape_recognition_enabled,
+                    appwindow
+                        .sidebar()
+                        .settings_panel()
+                        .general_hide_pen_cursor_row()
+                        .is_active(),
+                    config.style,
+                    config.builder_type,
+                );
+                match crate::canvas::inputlog::save(&header) {
+                    Ok(path) => {
+                        appwindow.overlays().dispatch_toast_text(
+                            &format!("{} {}", gettext("Input log saved to"), path.display()),
+                            crate::overlays::TEXT_TOAST_TIMEOUT_DEFAULT,
+                        );
+                    }
+                    Err(e) => {
+                        error!("Saving input log failed, Err: {e:?}");
+                        appwindow
+                            .overlays()
+                            .dispatch_toast_error(&gettext("Saving input log failed"));
+                    }
+                }
+            }
+        ));
         let action_focus_mode = gio::PropertyAction::new("focus-mode", self, "focus-mode");
         self.add_action(&action_focus_mode);
         let action_pen_sounds = gio::PropertyAction::new("pen-sounds", self, "pen-sounds");
@@ -1467,6 +1505,7 @@ impl RnAppWindow {
         app.set_accels_for_action("win.open-appmenu", &["F10"]);
         app.set_accels_for_action("win.open-doc", &["<Ctrl>o"]);
         app.set_accels_for_action("win.save-doc", &["<Ctrl>s"]);
+        app.set_accels_for_action("win.save-input-log", &["<Ctrl><Alt>l"]);
         app.set_accels_for_action("win.save-doc-as", &["<Ctrl><Shift>s"]);
         app.set_accels_for_action("win.new-tab", &["<Ctrl>t"]);
         app.set_accels_for_action("win.snap-positions", &["<Ctrl><Shift>p"]);

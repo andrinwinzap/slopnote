@@ -63,6 +63,10 @@
             <attribute name="action">win.devel-mode</attribute>
           </item>
           <item>
+            <attribute name="label" translatable="yes">Save _Input Log</attribute>
+            <attribute name="action">win.save-input-log</attribute>
+          </item>
+          <item>
             <attribute name="label" translatable="yes">New _Window</attribute>
             <attribute name="action">app.new-window</attribute>
           </item>
