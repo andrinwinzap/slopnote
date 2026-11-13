@@ -283,11 +283,12 @@ impl RnAppWindow {
                 .is_active()
     }
 
-    /// Hides the header bar while fullscreen when that is set, shows it otherwise and while the
-    /// pointer brought it back at the top edge.
+    /// Hides the header bar and the tab bar while fullscreen when that is set, shows them otherwise
+    /// and while the pointer brought them back at the top edge.
     pub(crate) fn update_header_visibility(&self) {
         let hide = self.header_hidden_in_fullscreen() && !self.imp().header_edge_revealed.get();
         self.imp().main_toolbar_view.set_reveal_top_bars(!hide);
+        self.imp().tabbar.set_visible(!hide);
     }
 
     /// Shows the header bar hidden in fullscreen while the pointer is at the top edge of the
@@ -303,8 +304,20 @@ impl RnAppWindow {
         /// How far a swipe from the top has to go down to bring the header bar back.
         const TOUCH_SWIPE: f64 = 40.0;
 
-        let header_bottom =
-            |appwindow: &RnAppWindow| f64::from(appwindow.main_header().height()).max(40.0);
+        // Where the header bar, and the tab bar below it when that is shown, end.
+        let header_bottom = |appwindow: &RnAppWindow| {
+            let header = f64::from(appwindow.main_header().height()).max(40.0);
+            let tabbar = appwindow.imp().tabbar.get();
+            if !tabbar.is_mapped() {
+                return header;
+            }
+            tabbar
+                .compute_point(
+                    appwindow,
+                    &gtk4::graphene::Point::new(0.0, tabbar.height() as f32),
+                )
+                .map_or(header, |p| header.max(f64::from(p.y())))
+        };
 
         // GTK repeats the last pointer position whenever the layout changes, e.g. every frame
         // while the header bar slides in. Only actual movement counts.
