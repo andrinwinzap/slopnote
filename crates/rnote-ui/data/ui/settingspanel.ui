@@ -60,6 +60,12 @@
                       </object>
                     </child>
                     <child>
+                      <object class="AdwSwitchRow" id="general_hide_header_in_fullscreen_row">
+                        <property name="title" translatable="yes">Hide Header Bar in Fullscreen</property>
+                        <property name="subtitle" translatable="yes">Leave fullscreen with F11</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwSpinRow" id="general_rotation_level_snap_row">
                         <property name="title" translatable="yes">Rotation Snap to Level (degrees)</property>
                         <property name="subtitle" translatable="yes">Set how close to level the canvas has to be turned to snap to level</property>

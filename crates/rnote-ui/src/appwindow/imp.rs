@@ -34,6 +34,8 @@ pub(crate) struct RnAppWindow {
     pub(crate) zoom_lock_threshold: Cell<f64>,
     pub(crate) touch_drawing: Cell<bool>,
     pub(crate) focus_mode: Cell<bool>,
+    /// The header bar hidden in fullscreen is shown, because the pointer went to the top edge.
+    pub(crate) header_edge_revealed: Cell<bool>,
     pub(crate) devel_mode: Cell<bool>,
     pub(crate) visual_debug: Cell<bool>,
 
@@ -51,6 +53,8 @@ pub(crate) struct RnAppWindow {
     pub(crate) overview: TemplateChild<adw::TabOverview>,
     #[template_child]
     pub(crate) main_header: TemplateChild<RnMainHeader>,
+    #[template_child]
+    pub(crate) main_toolbar_view: TemplateChild<adw::ToolbarView>,
     #[template_child]
     pub(crate) split_view: TemplateChild<adw::OverlaySplitView>,
     #[template_child]
@@ -91,6 +95,7 @@ impl Default for RnAppWindow {
             zoom_lock_threshold: Cell::new(super::RnAppWindow::ZOOM_LOCK_THRESHOLD_DEFAULT),
             touch_drawing: Cell::new(false),
             focus_mode: Cell::new(false),
+            header_edge_revealed: Cell::new(false),
             devel_mode: Cell::new(false),
             visual_debug: Cell::new(false),
 
@@ -106,6 +111,7 @@ impl Default for RnAppWindow {
 
             overview: TemplateChild::<adw::TabOverview>::default(),
             main_header: TemplateChild::<RnMainHeader>::default(),
+            main_toolbar_view: TemplateChild::<adw::ToolbarView>::default(),
             split_view: TemplateChild::<adw::OverlaySplitView>::default(),
             sidebar: TemplateChild::<RnSidebar>::default(),
             tabbar: TemplateChild::<adw::TabBar>::default(),

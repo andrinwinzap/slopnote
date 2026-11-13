@@ -44,6 +44,8 @@ mod imp {
         #[template_child]
         pub(crate) general_show_scrollbars_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub(crate) general_hide_header_in_fullscreen_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub(crate) general_optimize_epd_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub(crate) general_inertial_scrolling_row: TemplateChild<adw::SwitchRow>,
@@ -423,6 +425,10 @@ impl RnSettingsPanel {
         self.imp().general_show_scrollbars_row.clone()
     }
 
+    pub(crate) fn general_hide_header_in_fullscreen_row(&self) -> adw::SwitchRow {
+        self.imp().general_hide_header_in_fullscreen_row.clone()
+    }
+
     pub(crate) fn general_inertial_scrolling_row(&self) -> adw::SwitchRow {
         self.imp().general_inertial_scrolling_row.clone()
     }
@@ -664,6 +670,13 @@ impl RnSettingsPanel {
                 move |row| {
                     set_overlays_margins(&appwindow, row.is_active());
                 }
+            ));
+
+        imp.general_hide_header_in_fullscreen_row
+            .connect_active_notify(clone!(
+                #[weak]
+                appwindow,
+                move |_| appwindow.update_header_visibility()
             ));
 
         imp.general_optimize_epd_row

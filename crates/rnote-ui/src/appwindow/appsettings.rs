@@ -105,6 +105,19 @@ impl RnAppWindow {
             .get_no_changes()
             .build();
 
+        // hide the header bar in fullscreen
+        app_settings
+            .bind(
+                "hide-header-in-fullscreen",
+                &self
+                    .sidebar()
+                    .settings_panel()
+                    .general_hide_header_in_fullscreen_row(),
+                "active",
+            )
+            .get_no_changes()
+            .build();
+
         // inertial scrolling
         app_settings
             .bind(

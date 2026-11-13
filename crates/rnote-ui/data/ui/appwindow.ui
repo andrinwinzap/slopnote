@@ -27,7 +27,7 @@
             </property>
             <!-- main view -->
             <property name="content">
-              <object class="AdwToolbarView">
+              <object class="AdwToolbarView" id="main_toolbar_view">
                 <property name="top-bar-style">raised</property>
                 <child type="top">
                   <object class="RnMainHeader" id="main_header">

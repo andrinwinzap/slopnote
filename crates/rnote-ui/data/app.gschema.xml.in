@@ -129,6 +129,10 @@
       <default>false</default>
       <summary>Whether the canvas scrollbars are shown</summary>
     </key>
+    <key name="hide-header-in-fullscreen" type="b">
+      <default>false</default>
+      <summary>Whether the header bar is hidden while the window is fullscreen</summary>
+    </key>
     <key name="inertial-scrolling" type="b">
       <default>true</default>
       <summary>Whether touch scrolling on the canvas is inertial</summary>

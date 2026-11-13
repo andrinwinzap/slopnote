@@ -273,6 +273,126 @@ impl RnAppWindow {
         self.imp().overview.get()
     }
 
+    /// Whether the header bar is hidden because the window is fullscreen and that is set.
+    fn header_hidden_in_fullscreen(&self) -> bool {
+        self.is_fullscreen()
+            && self
+                .sidebar()
+                .settings_panel()
+                .general_hide_header_in_fullscreen_row()
+                .is_active()
+    }
+
+    /// Hides the header bar while fullscreen when that is set, shows it otherwise and while the
+    /// pointer brought it back at the top edge.
+    pub(crate) fn update_header_visibility(&self) {
+        let hide = self.header_hidden_in_fullscreen() && !self.imp().header_edge_revealed.get();
+        self.imp().main_toolbar_view.set_reveal_top_bars(!hide);
+    }
+
+    /// Shows the header bar hidden in fullscreen while the pointer is at the top edge of the
+    /// window, and hides it again once the pointer has moved on below it. On the touchscreen,
+    /// a swipe down from the top edge shows it and a touch below it hides it again.
+    fn setup_header_edge_reveal(&self) {
+        /// How close to the top the pointer has to come to bring the header bar back.
+        const EDGE: f64 = 2.0;
+        /// How far below the header bar the pointer has to go for it to hide again.
+        const MARGIN: f64 = 24.0;
+        /// How close to the top a swipe has to start to bring the header bar back.
+        const TOUCH_EDGE: f64 = 32.0;
+        /// How far a swipe from the top has to go down to bring the header bar back.
+        const TOUCH_SWIPE: f64 = 40.0;
+
+        let header_bottom =
+            |appwindow: &RnAppWindow| f64::from(appwindow.main_header().height()).max(40.0);
+
+        // GTK repeats the last pointer position whenever the layout changes, e.g. every frame
+        // while the header bar slides in. Only actual movement counts.
+        let last_pointer_pos = std::rc::Rc::new(std::cell::Cell::new(None::<(f64, f64)>));
+        let motion = gtk4::EventControllerMotion::new();
+        motion.set_propagation_phase(gtk4::PropagationPhase::Capture);
+        motion.connect_motion(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            #[strong]
+            last_pointer_pos,
+            move |motion, x, y| {
+                if last_pointer_pos.replace(Some((x, y))) == Some((x, y)) {
+                    return;
+                }
+                // Touches are handled by the swipe below.
+                let touch = motion
+                    .current_event()
+                    .is_some_and(|event| event.is_pointer_emulated())
+                    || motion
+                        .current_event_device()
+                        .is_some_and(|device| device.source() == gdk::InputSource::Touchscreen);
+                if touch || !appwindow.header_hidden_in_fullscreen() {
+                    return;
+                }
+                let imp = appwindow.imp();
+                let revealed = imp.header_edge_revealed.get();
+                if !revealed && y <= EDGE {
+                    imp.header_edge_revealed.set(true);
+                } else if revealed
+                    && y > header_bottom(&appwindow) + MARGIN
+                    && !menu_open(appwindow.main_header().upcast_ref())
+                {
+                    imp.header_edge_revealed.set(false);
+                } else {
+                    return;
+                }
+                appwindow.update_header_visibility();
+            }
+        ));
+        self.add_controller(motion);
+
+        let swipe = gtk4::GestureDrag::new();
+        swipe.set_touch_only(true);
+        swipe.set_propagation_phase(gtk4::PropagationPhase::Capture);
+        swipe.connect_drag_begin(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |swipe, _, y| {
+                let imp = appwindow.imp();
+                if appwindow.header_hidden_in_fullscreen()
+                    && !imp.header_edge_revealed.get()
+                    && y <= TOUCH_EDGE
+                {
+                    // Taken right away, before the canvas takes it for panning, and followed in
+                    // drag_update to see whether it is a swipe down.
+                    swipe.set_state(gtk4::EventSequenceState::Claimed);
+                    return;
+                }
+                if imp.header_edge_revealed.get()
+                    && y > header_bottom(&appwindow) + MARGIN
+                    && !menu_open(appwindow.main_header().upcast_ref())
+                {
+                    imp.header_edge_revealed.set(false);
+                    appwindow.update_header_visibility();
+                }
+                // Everything else is left to the canvas and the other widgets.
+                swipe.set_state(gtk4::EventSequenceState::Denied);
+            }
+        ));
+        swipe.connect_drag_update(clone!(
+            #[weak(rename_to=appwindow)]
+            self,
+            move |_, _, dy| {
+                if dy >= TOUCH_SWIPE && !appwindow.imp().header_edge_revealed.get() {
+                    appwindow.imp().header_edge_revealed.set(true);
+                    appwindow.update_header_visibility();
+                }
+            }
+        ));
+        self.add_controller(swipe);
+
+        self.connect_fullscreened_notify(|appwindow| {
+            appwindow.imp().header_edge_revealed.set(false);
+            appwindow.update_header_visibility();
+        });
+    }
+
     pub(crate) fn main_header(&self) -> RnMainHeader {
         self.imp().main_header.get()
     }
@@ -379,6 +499,7 @@ impl RnAppWindow {
         // Without this, the first focusable widget, e.g. a toast button, gets the focus on startup.
         self.connect_map(|appwindow| appwindow.focus_active_canvas());
         imp.main_header.get().init(self);
+        self.setup_header_edge_reveal();
 
         // actions and settings AFTER widget inits
         self.setup_icon_theme();
@@ -1246,4 +1367,22 @@ impl RnAppWindow {
 
         Ok(())
     }
+}
+
+/// Whether a menu of a menu button in `widget` or below it is open.
+fn menu_open(widget: &gtk4::Widget) -> bool {
+    if widget
+        .downcast_ref::<gtk4::MenuButton>()
+        .is_some_and(|button| button.is_active())
+    {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(c) = child {
+        if menu_open(&c) {
+            return true;
+        }
+        child = c.next_sibling();
+    }
+    false
 }
